@@ -1,0 +1,6 @@
+{
+  "name": "ThunderFire AI",
+  "description": "An advanced AI assistant with a live web builder, voice interaction, and long-term memory system.",
+  "requestFramePermissions": ["microphone", "notifications", "geolocation"],
+  "majorCapabilities": ["AI Chat", "Live Web Preview", "Reminders", "Voice Input/Output", "Arabic Support"]
+}
