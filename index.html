@@ -549,6 +549,35 @@
 
 <script src="app.js"></script>
 
+<script>
+document.getElementById("command-form").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const input = document.getElementById("input");
+    const chat = document.getElementById("chat");
+
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    const box = document.createElement("div");
+    box.className = "message user";
+    box.innerHTML = "<span class='sender'>YOU</span>" + text;
+
+    chat.appendChild(box);
+
+    input.value = "";
+
+    const reply = document.createElement("div");
+    reply.className = "message jarvis";
+    reply.innerHTML = "<span class='sender'>J.A.R.V.I.S</span>تم استلام الأمر بنجاح.";
+
+    chat.appendChild(reply);
+
+    chat.scrollTop = chat.scrollHeight;
+});
+</script>
+
 </body>
 
 </html>
