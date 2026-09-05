@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "npm --workspace apps/web run dev",
-    "build": "npm --workspace apps/web run build",
+  "build:web": "npm --workspace apps/web run build",
     "typecheck": "npm --workspace packages/core run typecheck && npm --workspace apps/web run typecheck",
     "test": "npm --workspace packages/core run test"
   }
