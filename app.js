@@ -2,7 +2,7 @@
 
 /*
 =========================================================
-J.A.R.V.I.S — COGNITIVE OS v1.0
+J.A.R.V.I.S — COGNITIVE OS v1.1
 PHASE 1 — WEB COGNITIVE CORE
 
 USER INPUT  : TEXT
