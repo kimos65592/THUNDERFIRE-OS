@@ -1,0 +1,405 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Tahoma,
+    sans-serif;
+
+  color: #eaf5ff;
+  background: #05080d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+
+  background:
+    radial-gradient(
+      circle at top,
+      #102132 0,
+      #05080d 48%
+    );
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.shell {
+  width: min(1450px, 100%);
+  margin: auto;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding:
+    8px
+    5px
+    18px;
+
+  border-bottom:
+    1px solid
+    #1d3649;
+}
+
+.brand {
+  font-size: 29px;
+  font-weight: 900;
+
+  letter-spacing:
+    0.18em;
+}
+
+.sub {
+  margin-top: 3px;
+
+  font-size: 10px;
+  opacity: 0.55;
+
+  letter-spacing:
+    0.28em;
+}
+
+.status {
+  padding:
+    8px
+    14px;
+
+  border-radius:
+    999px;
+
+  font-size: 11px;
+
+  border:
+    1px solid
+    #39556b;
+}
+
+.status.online {
+  color: #52ffad;
+  border-color: #52ffad;
+}
+
+.status.offline {
+  color: #ff9b9b;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 20px;
+
+  padding:
+    28px
+    5px;
+}
+
+.hero h1 {
+  margin:
+    0
+    0
+    6px;
+
+  font-size: 32px;
+}
+
+.hero p {
+  margin: 0;
+
+  opacity: 0.65;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 9px;
+}
+
+button {
+  color: #eaf5ff;
+  background: #0c1722;
+
+  border:
+    1px solid
+    #35556d;
+
+  border-radius:
+    12px;
+
+  padding:
+    11px
+    16px;
+}
+
+button:hover {
+  border-color: #4b7895;
+}
+
+.dashboard {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 2fr)
+    minmax(280px, 1fr);
+
+  gap: 14px;
+}
+
+.panel {
+  padding: 16px;
+
+  background:
+    rgba(
+      7,
+      15,
+      23,
+      0.88
+    );
+
+  border:
+    1px solid
+    #1a3548;
+
+  border-radius:
+    18px;
+
+  box-shadow:
+    0 18px 50px
+    rgba(0, 0, 0, 0.22);
+}
+
+.wide {
+  grid-column:
+    1 / -1;
+}
+
+.panel-title {
+  display: flex;
+  justify-content: space-between;
+
+  margin-bottom: 12px;
+}
+
+.panel h2 {
+  margin: 0;
+
+  font-size: 15px;
+
+  letter-spacing:
+    0.03em;
+}
+
+.chat {
+  height: 430px;
+
+  overflow-y: auto;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 10px;
+
+  padding: 4px;
+}
+
+.message {
+  max-width: 90%;
+
+  padding:
+    12px
+    14px;
+
+  border-radius:
+    14px;
+
+  line-height: 1.65;
+}
+
+.message strong {
+  display: block;
+
+  margin-bottom: 4px;
+
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.message.user {
+  align-self: flex-start;
+
+  background:
+    #102235;
+}
+
+.message.jarvis {
+  align-self: flex-end;
+
+  background:
+    #0d2622;
+
+  border:
+    1px solid
+    #1b5549;
+}
+
+.composer {
+  display: flex;
+  gap: 10px;
+
+  margin-top: 10px;
+}
+
+.composer textarea {
+  flex: 1;
+
+  min-height: 82px;
+
+  resize: vertical;
+
+  color: #eaf5ff;
+  background: #071019;
+
+  border:
+    1px solid
+    #28485e;
+
+  border-radius:
+    14px;
+
+  padding: 12px;
+}
+
+.composer button {
+  min-width: 90px;
+}
+
+.data-list {
+  display: grid;
+  gap: 7px;
+}
+
+.data-list > div {
+  display: flex;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  padding:
+    9px
+    0;
+
+  border-bottom:
+    1px solid
+    #152635;
+}
+
+.data-list span {
+  opacity: 0.5;
+
+  font-size: 10px;
+}
+
+.data-list strong {
+  max-width: 65%;
+
+  text-align: left;
+
+  font-size: 11px;
+}
+
+.events {
+  min-height: 250px;
+  max-height: 340px;
+
+  overflow: auto;
+
+  white-space: pre-wrap;
+
+  color: #bad2e4;
+
+  font:
+    11px
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.memory article {
+  padding:
+    10px
+    0;
+
+  border-bottom:
+    1px solid
+    #152635;
+}
+
+.memory b {
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+.memory article div {
+  margin-top: 3px;
+}
+
+.memory small {
+  opacity: 0.45;
+}
+
+.goal h3 {
+  margin-top: 0;
+}
+
+.goal p {
+  opacity: 0.75;
+}
+
+.goal hr {
+  margin:
+    14px
+    0;
+
+  border: 0;
+
+  border-top:
+    1px solid
+    #1a3448;
+}
+
+.plan-meta {
+  opacity: 0.6;
+
+  font-size: 11px;
+}
+
+@media (max-width: 950px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .wide {
+    grid-column: auto;
+  }
+
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
