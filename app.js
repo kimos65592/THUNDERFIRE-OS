@@ -1741,9 +1741,9 @@ function renderState() {
 
     setText(
         "systemState",
-        state.system.online
-            ? "ONLINE"
-            : "OFFLINE"
+        state.system?.online !== false
+    ? "ONLINE"
+    : "OFFLINE"
     );
 
 
