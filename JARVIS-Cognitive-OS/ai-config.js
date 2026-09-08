@@ -28,13 +28,13 @@ window.JARVIS_AI_CONFIG = {
     enabled: true,
 
     endpoint:
-        "PUT_YOUR_OPENAI_COMPATIBLE_ENDPOINT_HERE",
+        "https://api.groq.com/openai/v1/chat/completions",
 
     apiKey:
-        "PUT_YOUR_API_KEY_HERE",
+        "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",
 
     model:
-        "PUT_YOUR_MODEL_NAME_HERE",
+        "openai/gpt-oss-20b",
 
     temperature:
         0.25,
