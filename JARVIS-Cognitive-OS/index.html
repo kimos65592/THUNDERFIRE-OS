@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>J.A.R.V.I.S — Cognitive OS</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background:
+                radial-gradient(
+                    circle at top,
+                    #102333,
+                    #05080d 45%,
+                    #020408
+                );
+
+            color: #edf7ff;
+
+            font-family:
+                system-ui,
+                -apple-system,
+                "Segoe UI",
+                Tahoma,
+                Arial,
+                sans-serif;
+
+            min-height: 100vh;
+        }
+
+        .app {
+            width: min(1250px, 100%);
+            margin: auto;
+            padding: 16px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+
+            padding: 16px;
+
+            border:
+                1px solid #1c3448;
+
+            border-radius: 18px;
+
+            background:
+                rgba(6,13,21,.94);
+
+            margin-bottom: 14px;
+        }
+
+        .brand {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .orb {
+            width: 46px;
+            height: 46px;
+
+            border-radius: 50%;
+
+            background:
+                radial-gradient(
+                    circle,
+                    #efffff 0 7%,
+                    #57dfff 10% 24%,
+                    #17465a 40%,
+                    #061019 72%
+                );
+
+            border:
+                1px solid #65ddff;
+
+            box-shadow:
+                0 0 28px
+                rgba(85,220,255,.34);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: .08em;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: #7890a7;
+            margin-top: 3px;
+        }
+
+        .status {
+            color: #6ee5a0;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .layout {
+            display: grid;
+
+            grid-template-columns:
+                minmax(0, 1.45fr)
+                minmax(280px, .75fr);
+
+            gap: 14px;
+        }
+
+        .panel {
+            background:
+                rgba(7,14,23,.95);
+
+            border:
+                1px solid #1a3042;
+
+            border-radius: 18px;
+
+            overflow: hidden;
+        }
+
+        .panel-title {
+            padding: 12px 14px;
+
+            color: #c7e5f6;
+
+            border-bottom:
+                1px solid #182d3e;
+
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        #messages {
+            height: 68vh;
+            min-height: 450px;
+
+            overflow-y: auto;
+
+            padding: 15px;
+
+            display: flex;
+            flex-direction: column;
+
+            gap: 10px;
+        }
+
+        .message {
+            max-width: 88%;
+
+            padding: 11px 13px;
+
+            border-radius: 14px;
+
+            line-height: 1.7;
+
+            white-space: pre-wrap;
+
+            font-size: 14px;
+        }
+
+        .user {
+            align-self: flex-start;
+
+            background: #122234;
+
+            border:
+                1px solid #25435d;
+        }
+
+        .jarvis {
+            align-self: flex-end;
+
+            background: #091923;
+
+            border:
+                1px solid #20485e;
+        }
+
+        .meta {
+            font-size: 10px;
+            color: #738da4;
+            margin-bottom: 4px;
+        }
+
+        form {
+            display: flex;
+            gap: 8px;
+
+            padding: 10px;
+
+            border-top:
+                1px solid #182d3e;
+        }
+
+        #userInput {
+            flex: 1;
+
+            min-width: 0;
+
+            padding: 13px;
+
+            border-radius: 12px;
+
+            border:
+                1px solid #263e53;
+
+            background: #03070c;
+
+            color: white;
+
+            outline: none;
+
+            font-size: 14px;
+        }
+
+        #userInput:focus {
+            border-color: #5cdcff;
+        }
+
+        button {
+            border:
+                1px solid #2a475c;
+
+            background: #102638;
+
+            color: #effbff;
+
+            border-radius: 11px;
+
+            padding: 0 16px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        .side-section {
+            padding: 12px;
+
+            border-bottom:
+                1px solid #172b3b;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+
+            gap: 10px;
+
+            padding: 7px 0;
+
+            border-bottom:
+                1px dashed #182b3b;
+
+            font-size: 12px;
+        }
+
+        .row:last-child {
+            border-bottom: 0;
+        }
+
+        .label {
+            color: #8197aa;
+        }
+
+        .value {
+            font-weight: 700;
+            text-align: left;
+
+            max-width: 65%;
+        }
+
+        .log {
+            background: #020509;
+
+            color: #9bb1c4;
+
+            direction: ltr;
+
+            text-align: left;
+
+            font:
+                11px/1.7
+                monospace;
+
+            padding: 9px;
+
+            max-height: 220px;
+
+            overflow: auto;
+        }
+
+        .chip {
+            display: inline-block;
+
+            border:
+                1px solid #29465d;
+
+            border-radius: 999px;
+
+            padding: 4px 7px;
+
+            margin: 3px 3px 0 0;
+
+            font-size: 10px;
+        }
+
+        @media (max-width: 850px) {
+
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            #messages {
+                height: 60vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <header>
+
+        <div class="brand">
+
+            <div class="orb"></div>
+
+            <div>
+
+                <div class="title">
+                    J.A.R.V.I.S — COGNITIVE OS
+                </div>
+
+                <div class="subtitle">
+                    MODEL-DRIVEN COGNITIVE CORE
+                </div>
+
+            </div>
+
+        </div>
+
+        <div
+            id="headerStatus"
+            class="status"
+        >
+            ● ONLINE
+        </div>
+
+    </header>
+
+
+    <div class="layout">
+
+
+        <section class="panel">
+
+            <div class="panel-title">
+                CONVERSATION
+            </div>
+
+
+            <div id="messages"></div>
+
+
+            <form
+                id="chatForm"
+                autocomplete="off"
+            >
+
+                <input
+                    id="userInput"
+                    type="text"
+                    placeholder="تحدث مع J.A.R.V.I.S..."
+                >
+
+                <button
+                    id="sendButton"
+                    type="submit"
+                >
+                    إرسال
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <aside class="panel">
+
+            <div class="panel-title">
+                COGNITIVE STATE
+            </div>
+
+
+            <div class="side-section">
+
+                <div class="row">
+                    <span class="label">
+                        State
+                    </span>
+
+                    <span
+                        id="systemState"
+                        class="value"
+                    >
+                        online
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Cognitive
+                    </span>
+
+                    <span
+                        id="processing"
+                        class="value"
+                    >
+                        idle
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Confidence
+                    </span>
+
+                    <span
+                        id="confidence"
+                        class="value"
+                    >
+                        0%
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Uncertainty
+                    </span>
+
+                    <span
+                        id="uncertainty"
+                        class="value"
+                    >
+                        0%
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Goal
+                    </span>
+
+                    <span
+                        id="goal"
+                        class="value"
+                    >
+                        لا يوجد
+                    </span>
+                </div>
+
+            </div>
+
+
+            <div class="side-section">
+
+                <div class="panel-title"
+                     style="padding:0 0 8px;border:0">
+                    MODEL UNDERSTANDING
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Intent
+                    </span>
+
+                    <span
+                        id="intent"
+                        class="value"
+                    >
+                        unknown
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Goal
+                    </span>
+
+                    <span
+                        id="analysisGoal"
+                        class="value"
+                    >
+                        —
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Memory Action
+                    </span>
+
+                    <span
+                        id="memoryAction"
+                        class="value"
+                    >
+                        none
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Urgency
+                    </span>
+
+                    <span
+                        id="urgency"
+                        class="value"
+                    >
+                        0%
+                    </span>
+                </div>
+
+            </div>
+
+
+            <div class="side-section">
+
+                <div class="panel-title"
+                     style="padding:0 0 8px;border:0">
+                    MEMORY
+                </div>
+
+
+                <div id="memoryView">
+                    لا توجد ذكريات.
+                </div>
+
+            </div>
+
+
+            <div class="side-section">
+
+                <div class="panel-title"
+                     style="padding:0 0 8px;border:0">
+                    PLAN
+                </div>
+
+
+                <div id="planView">
+                    لا توجد خطة.
+                </div>
+
+            </div>
+
+
+            <div class="side-section">
+
+                <div class="panel-title"
+                     style="padding:0 0 8px;border:0">
+                    MODEL / EVENT LOG
+                </div>
+
+
+                <pre
+                    id="eventLog"
+                    class="log"
+                ></pre>
+
+            </div>
+
+        </aside>
+
+    </div>
+
+</div>
+
+
+<script src="./ai-config.js"></script>
+<script src="./app.js"></script>
+
+</body>
+</html>
