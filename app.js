@@ -74,65 +74,55 @@ const STORAGE_KEY =
 
 const DefaultState = {
 
+    system: {
+        online: true,
+        environment: "web",
+        version: "1.0"
+    },
+
     conversation: [],
 
     memories: [],
 
     goals: [],
 
-    currentGoal:
-        null,
+    currentGoal: null,
 
-    currentPlan:
-        null,
+    currentPlan: null,
 
-    lastAnalysis:
-        null,
+    lastAnalysis: null,
 
     personality: {
 
-        address:
-            "يا سيدي",
+        address: "يا سيدي",
 
-        tone:
-            "calm",
+        tone: "calm",
 
-        concise:
-            false,
+        concise: false,
 
-        formal:
-            0.65,
+        formal: 0.65,
 
-        humor:
-            0.25,
+        humor: 0.25,
 
-        proactive:
-            true,
+        proactive: true,
 
-        voiceRate:
-            0.95
+        voiceRate: 0.95
 
     },
 
     self: {
 
-        mode:
-            "idle",
+        mode: "idle",
 
-        confidence:
-            0.5,
+        confidence: 0.5,
 
-        uncertainty:
-            0.5,
+        uncertainty: 0.5,
 
-        awareness:
-            0.8,
+        awareness: 0.8,
 
-        attention:
-            0.8,
+        attention: 0.8,
 
-        emotionEstimate:
-            "neutral"
+        emotionEstimate: "neutral"
 
     },
 
