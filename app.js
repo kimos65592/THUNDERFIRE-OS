@@ -2217,12 +2217,13 @@ try {
         );
 
 
-        renderAll();
+        try {
+    renderAll();
+} catch (error) {
+    console.error("[JARVIS UI ERROR]", error);
+}
 
-
-        logEvent(
-            "BOOT"
-        );
+logEvent("BOOT");
 
     }
 );
