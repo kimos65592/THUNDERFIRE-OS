@@ -2069,19 +2069,18 @@ document.addEventListener(
             );
 
 
-        renderAll();
+        if (!state.conversation.length) {
+    addMessage(
+        "jarvis",
+        "صباح الخير يا سيدي. النواة المعرفية جاهزة، والموديل هو طبقة فهم اللغة واتخاذ القرار."
+    );
+}
 
-
-        if (
-            !state.conversation.length
-        ) {
-
-            addMessage(
-                "jarvis",
-                "صباح الخير يا سيدي. النواة المعرفية جاهزة، والموديل هو طبقة فهم اللغة واتخاذ القرار."
-            );
-
-        }
+try {
+    renderAll();
+} catch (error) {
+    console.error("[JARVIS UI ERROR]", error);
+}
 
 
         form.addEventListener(
