@@ -9,7 +9,7 @@ window.JARVIS_AI_CONFIG = {
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 
     apiKey:
-        "AQ.Ab8RN6LIVzClZC0U2j3HbLHlOJp3nA9b0223DqjqCmAK8frT1A",
+        "AQ.Ab8RN6Kek9VuQoUGukD4iPIgjJ1AsmuAiqU73S9dQHzySBv3ZQ",
 
     model:
         "gemini-3.8-flash",
