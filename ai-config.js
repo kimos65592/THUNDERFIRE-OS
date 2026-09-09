@@ -18,13 +18,13 @@ window.JARVIS_AI_CONFIG = {
     enabled: true,
 
     endpoint:
-        "https://api.groq.com/openai/v1/chat/completions",
+        "https://openrouter.ai/api/v1/chat/completions",
 
     apiKey:
-        "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",
+        "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",
 
     model:
-        "qwen/qwen3.6-27b",
+        "openrouter/free",
 
     temperature:
         0.25,
