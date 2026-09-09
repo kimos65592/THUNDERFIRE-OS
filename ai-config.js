@@ -5,7 +5,7 @@
 J.A.R.V.I.S AI CONFIGURATION
 =========================================================
 
-Groq + qwen/qwen3.6-27b
+gemini-3.8-flash
 
 تحذير:
 لا ترفع apiKey الحقيقي إلى GitHub.
@@ -17,14 +17,13 @@ window.JARVIS_AI_CONFIG = {
 
     enabled: true,
 
-    endpoint:
-        "https://openrouter.ai/api/v1/chat/completions",
+    provider: "gemini",
 
     apiKey:
-        "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",
+        "AQ.Ab8RN6LIVzClZC0U2j3HbLHlOJp3nA9b0223DqjqCmAK8frT1A",
 
     model:
-        "openrouter/free",
+        "gemini-3.8-flash",
 
     temperature:
         0.25,
