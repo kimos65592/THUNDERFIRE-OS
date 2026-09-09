@@ -1,45 +1,60 @@
 "use strict";
 
 /*
-=========================================================
-J.A.R.V.I.S — AI-FIRST COGNITIVE CORE
-=========================================================
+=============================================================
+ J.A.R.V.I.S — AGENT CORE V2
+=============================================================
 
-AI MODEL
+ USER
    ↓
-UNDERSTANDING
+ AI UNDERSTANDING
    ↓
-WORLD MODEL
+ WORLD MODEL
    ↓
-MEMORY
+ MEMORY
    ↓
-GOALS
+ GOALS
    ↓
-PLANNING
+ PLANNING
    ↓
-DECISION
+ DECISION
    ↓
-TOOLS
+ TOOL CALL
    ↓
-OBSERVATION
+ EXECUTE
    ↓
-REFLECTION
+ OBSERVE
    ↓
-LEARNING
+ AI REFLECTION
+   ↓
+ RETRY / REPLAN
+   ↓
+ LEARN
+   ↓
+ FINAL RESPONSE
 
-The JavaScript does NOT decide what the user meant.
+=============================================================
 
-The AI model does.
+IMPORTANT:
 
-JavaScript validates structured model output
-and executes tools safely.
-=========================================================
+The model is responsible for understanding and deciding.
+
+JavaScript is responsible for:
+- state
+- persistence
+- tools
+- validation
+- execution
+- observation
+- safety boundaries
+
+=============================================================
 */
 
 
-/* ========================================================
-   CONFIGURATION
-======================================================== */
+/* =========================================================
+   CONFIG
+========================================================= */
 
 const AI_CONFIG =
     window.JARVIS_AI_CONFIG || {
@@ -54,30 +69,57 @@ const AI_CONFIG =
             "",
 
         model:
-            "",
+            "openai/gpt-oss-20b",
 
         temperature:
-            0.25,
+            0.35,
 
         maxTokens:
-            1200
+            1600,
+
+        reasoningEffort:
+            "medium",
+
+        browserSearch:
+            true,
+
+        fallbackWebSearch:
+            true,
+
+        fallbackSearchEndpoint:
+            "",
+
+        maxAgentIterations:
+            6,
+
+        maxRetries:
+            2
     };
 
 
-/* ========================================================
-   STORAGE
-======================================================== */
+/* =========================================================
+   DEFAULT STATE
+========================================================= */
 
-const STORAGE_KEY =
-    "JARVIS_COGNITIVE_OS_FULL";
-
-
-const DefaultState = {
+const DEFAULT_STATE = {
 
     system: {
-        online: true,
-        environment: "web",
-        version: "1.0"
+
+        online:
+            true,
+
+        environment:
+            "web",
+
+        version:
+            "AGENT-V2",
+
+        cognitiveState:
+            "idle",
+
+        model:
+            AI_CONFIG.model
+
     },
 
     conversation: [],
@@ -86,49 +128,161 @@ const DefaultState = {
 
     goals: [],
 
-    currentGoal: null,
+    tasks: [],
 
-    currentPlan: null,
+    currentGoal:
+        null,
 
-    lastAnalysis: null,
+    currentPlan:
+        null,
 
-    personality: {
+    currentTask:
+        null,
 
-        address: "يا سيدي",
-
-        tone: "calm",
-
-        concise: false,
-
-        formal: 0.65,
-
-        humor: 0.25,
-
-        proactive: true,
-
-        voiceRate: 0.95
-
-    },
+    lastAnalysis:
+        null,
 
     self: {
 
-        mode: "idle",
+        confidence:
+            0.5,
 
-        confidence: 0.5,
+        uncertainty:
+            0.5,
 
-        uncertainty: 0.5,
+        attention:
+            0.85,
 
-        awareness: 0.8,
+        awareness:
+            0.80,
 
-        attention: 0.8,
+        emotionEstimate:
+            "neutral"
 
-        emotionEstimate: "neutral"
+    },
+
+    personality: {
+
+        address:
+            "يا سيدي",
+
+        tone:
+            "calm",
+
+        concise:
+            false,
+
+        formal:
+            0.65,
+
+        humor:
+            0.25,
+
+        proactive:
+            true,
+
+        warmth:
+            0.75,
+
+        voiceRate:
+            0.95
+
+    },
+
+    agent: {
+
+        iteration:
+            0,
+
+        toolCalls:
+            0,
+
+        retries:
+            0,
+
+        lastTool:
+            null,
+
+        lastToolResult:
+            null,
+
+        webSearchUsed:
+            false,
+
+        cycleStartedAt:
+            null
+
+    },
+
+    learning: {
+
+        episodes:
+            []
 
     },
 
     events: []
-
 };
+
+
+/* =========================================================
+   STORAGE
+========================================================= */
+
+const STORAGE_KEY =
+    "JARVIS_AGENT_CORE_V2";
+
+
+function deepMerge(
+    target,
+    source
+) {
+
+    if (
+        !source ||
+        typeof source !== "object"
+    ) {
+
+        return target;
+
+    }
+
+
+    for (
+        const key
+        of Object.keys(source)
+    ) {
+
+        const value =
+            source[key];
+
+
+        if (
+            value &&
+            typeof value ===
+                "object" &&
+            !Array.isArray(value)
+        ) {
+
+            target[key] =
+                deepMerge(
+                    target[key] || {},
+                    value
+                );
+
+        } else {
+
+            target[key] =
+                value;
+
+        }
+
+    }
+
+
+    return target;
+
+}
 
 
 function loadState() {
@@ -144,24 +298,28 @@ function loadState() {
         if (!raw) {
 
             return structuredClone(
-                DefaultState
+                DEFAULT_STATE
             );
 
         }
 
 
         const saved =
-            JSON.parse(raw);
+            JSON.parse(
+                raw
+            );
 
 
-        return merge(
+        return deepMerge(
             structuredClone(
-                DefaultState
+                DEFAULT_STATE
             ),
             saved
         );
 
-    } catch (error) {
+    } catch (
+        error
+    ) {
 
         console.error(
             "[STATE LOAD]",
@@ -170,48 +328,11 @@ function loadState() {
 
 
         return structuredClone(
-            DefaultState
+            DEFAULT_STATE
         );
-    }
-}
 
-
-function merge(
-    target,
-    source
-) {
-
-    for (
-        const key
-        of Object.keys(source || {})
-    ) {
-
-        if (
-
-            source[key] &&
-            typeof source[key] ===
-                "object" &&
-            !Array.isArray(
-                source[key]
-            )
-
-        ) {
-
-            target[key] =
-                merge(
-                    target[key] || {},
-                    source[key]
-                );
-
-        } else {
-
-            target[key] =
-                source[key];
-
-        }
     }
 
-    return target;
 }
 
 
@@ -230,25 +351,32 @@ function saveState() {
             )
         );
 
-    } catch (error) {
+    } catch (
+        error
+    ) {
 
         console.error(
             "[STATE SAVE]",
             error
         );
+
     }
+
 }
 
 
-/* ========================================================
-   UTILS
-======================================================== */
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function normalizeArabic(
     text
 ) {
 
-    return String(text || "")
+    return String(
+        text || ""
+    )
+
         .toLowerCase()
 
         .replace(
@@ -296,16 +424,72 @@ function clamp(
         min,
         Math.min(
             max,
-            Number(value) || 0
+            Number(
+                value
+            ) || 0
         )
     );
 
 }
 
 
-/* ========================================================
+function safeJson(
+    value
+) {
+
+    try {
+
+        return JSON.stringify(
+            value,
+            null,
+            2
+        );
+
+    } catch {
+
+        return String(
+            value
+        );
+
+    }
+
+}
+
+
+function escapeHtml(
+    text
+) {
+
+    return String(
+        text ?? ""
+    )
+        .replace(
+            /[&<>"']/g,
+            char =>
+                ({
+                    "&":
+                        "&amp;",
+
+                    "<":
+                        "&lt;",
+
+                    ">":
+                        "&gt;",
+
+                    '"':
+                        "&quot;",
+
+                    "'":
+                        "&#039;"
+                }[char])
+        );
+
+}
+
+
+/* =========================================================
    EVENT BUS
-======================================================== */
+========================================================= */
 
 const EventBus = {
 
@@ -314,7 +498,7 @@ const EventBus = {
         data = {}
     ) {
 
-        const event = {
+        state.events.unshift({
 
             type,
 
@@ -323,22 +507,14 @@ const EventBus = {
             timestamp:
                 Date.now()
 
-        };
-
-
-        state.events.unshift(
-            event
-        );
+        });
 
 
         state.events =
             state.events.slice(
                 0,
-                100
+                150
             );
-
-
-        renderEventLog();
 
 
         console.log(
@@ -346,14 +522,115 @@ const EventBus = {
             data
         );
 
+
+        renderEventLog();
+
     }
 
 };
 
 
-/* ========================================================
+/* =========================================================
+   CONVERSATION
+========================================================= */
+
+const Conversation = {
+
+    addUser(
+        text
+    ) {
+
+        state.conversation.push({
+
+            role:
+                "user",
+
+            text,
+
+            timestamp:
+                Date.now()
+
+        });
+
+
+        state.conversation =
+            state.conversation.slice(
+                -100
+            );
+
+
+        saveState();
+
+    },
+
+
+    addJarvis(
+        text
+    ) {
+
+        state.conversation.push({
+
+            role:
+                "assistant",
+
+            text,
+
+            timestamp:
+                Date.now()
+
+        });
+
+
+        state.conversation =
+            state.conversation.slice(
+                -100
+            );
+
+
+        saveState();
+
+    },
+
+
+    recent(
+        count = 16
+    ) {
+
+        return state.conversation
+            .slice(
+                -count
+            );
+
+    },
+
+
+    context(
+        count = 16
+    ) {
+
+        return this
+            .recent(
+                count
+            )
+            .map(
+                message =>
+                    `${
+                        message.role ===
+                        "user"
+                            ? "USER"
+                            : "JARVIS"
+                    }: ${message.text}`
+            )
+            .join("\n");
+
+    }
+
+};
+
+
+/* =========================================================
    MEMORY ENGINE
-======================================================== */
+========================================================= */
 
 const MemoryEngine = {
 
@@ -364,12 +641,24 @@ const MemoryEngine = {
     ) {
 
         const clean =
-            String(text || "")
-                .trim();
+            String(
+                text || ""
+            ).trim();
 
 
-        if (!clean)
-            return false;
+        if (!clean) {
+
+            return {
+
+                success:
+                    false,
+
+                message:
+                    "Empty memory."
+
+            };
+
+        }
 
 
         const normalized =
@@ -378,47 +667,51 @@ const MemoryEngine = {
             );
 
 
-        const duplicate =
+        const exists =
             state.memories.some(
-                item =>
+                memory =>
                     normalizeArabic(
-                        item.text
-                    ) === normalized
+                        memory.text
+                    ) ===
+                    normalized
             );
 
 
-        if (duplicate)
-            return true;
+        if (!exists) {
 
+            state.memories.push({
 
-        state.memories.push({
+                id:
+                    Date.now() +
+                    "_" +
+                    Math.random()
+                        .toString(36)
+                        .slice(2),
 
-            id:
-                Date.now() +
-                "_" +
-                Math.random()
-                    .toString(36)
-                    .slice(2),
+                text:
+                    clean,
 
-            text:
-                clean,
+                category,
 
-            category,
+                createdAt:
+                    Date.now(),
 
-            createdAt:
-                Date.now(),
+                accessCount:
+                    0,
 
-            lastUsed:
-                null
+                lastAccess:
+                    null
 
-        });
+            });
+
+        }
 
 
         saveState();
 
 
         EventBus.emit(
-            "MEMORY_SAVED",
+            "MEMORY_SAVE",
             {
                 text:
                     clean,
@@ -431,7 +724,15 @@ const MemoryEngine = {
         renderMemory();
 
 
-        return true;
+        return {
+
+            success:
+                true,
+
+            message:
+                "Memory saved."
+
+        };
 
     },
 
@@ -454,32 +755,36 @@ const MemoryEngine = {
 
 
         if (
-            !query
+            !query.trim()
         ) {
 
             return memories
                 .slice(
-                    -10
+                    -20
                 )
                 .reverse();
 
         }
 
 
-        const q =
+        const words =
             normalizeArabic(
                 query
-            );
+            )
+                .split(" ")
+                .filter(
+                    Boolean
+                );
 
 
         return memories
 
             .map(
-                item => {
+                memory => {
 
-                    const text =
+                    const content =
                         normalizeArabic(
-                            item.text
+                            memory.text
                         );
 
 
@@ -489,12 +794,13 @@ const MemoryEngine = {
 
                     for (
                         const word
-                        of q.split(" ")
+                        of words
                     ) {
 
                         if (
-                            word &&
-                            text.includes(
+                            word.length >
+                            1 &&
+                            content.includes(
                                 word
                             )
                         ) {
@@ -508,7 +814,7 @@ const MemoryEngine = {
 
                     return {
 
-                        ...item,
+                        ...memory,
 
                         score
 
@@ -531,6 +837,49 @@ const MemoryEngine = {
     },
 
 
+    recall(
+        query
+    ) {
+
+        const results =
+            this.search(
+                query
+            );
+
+
+        for (
+            const item
+            of results
+        ) {
+
+            const memory =
+                state.memories.find(
+                    m =>
+                        m.id ===
+                        item.id
+                );
+
+
+            if (memory) {
+
+                memory.accessCount++;
+
+                memory.lastAccess =
+                    Date.now();
+
+            }
+
+        }
+
+
+        saveState();
+
+
+        return results;
+
+    },
+
+
     forget(
         query
     ) {
@@ -541,8 +890,19 @@ const MemoryEngine = {
             );
 
 
-        if (!q)
-            return 0;
+        if (!q) {
+
+            return {
+
+                success:
+                    false,
+
+                removed:
+                    0
+
+            };
+
+        }
 
 
         const before =
@@ -551,10 +911,12 @@ const MemoryEngine = {
 
         state.memories =
             state.memories.filter(
-                item =>
+                memory =>
                     !normalizeArabic(
-                        item.text
-                    ).includes(q)
+                        memory.text
+                    ).includes(
+                        q
+                    )
             );
 
 
@@ -567,7 +929,7 @@ const MemoryEngine = {
 
 
         EventBus.emit(
-            "MEMORY_FORGOTTEN",
+            "MEMORY_FORGET",
             {
                 query,
                 removed
@@ -578,575 +940,603 @@ const MemoryEngine = {
         renderMemory();
 
 
-        return removed;
+        return {
+
+            success:
+                true,
+
+            removed
+
+        };
 
     }
 
 };
 
 
-/* ========================================================
-   MODEL CONTEXT
-======================================================== */
+/* =========================================================
+   GOAL ENGINE
+========================================================= */
 
-function buildModelContext() {
+const GoalEngine = {
 
-    return {
+    create(
+        title,
+        meta = {}
+    ) {
 
-        conversation:
-            state.conversation
-                .slice(-14),
+        const goal = {
 
-        memories:
-            MemoryEngine
-                .all()
-                .slice(-30),
+            id:
+                Date.now() +
+                "_" +
+                Math.random()
+                    .toString(36)
+                    .slice(2),
 
-        currentGoal:
+            title:
+                String(
+                    title
+                ).trim(),
+
+            status:
+                "active",
+
+            urgency:
+                clamp(
+                    meta.urgency ||
+                    0
+                ),
+
+            constraints:
+                Array.isArray(
+                    meta.constraints
+                )
+                    ? meta.constraints
+                    : [],
+
+            preferences:
+                Array.isArray(
+                    meta.preferences
+                )
+                    ? meta.preferences
+                    : [],
+
+            createdAt:
+                Date.now(),
+
+            updatedAt:
+                Date.now()
+
+        };
+
+
+        state.goals.push(
+            goal
+        );
+
+
+        state.currentGoal =
+            goal;
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "GOAL_CREATED",
+            goal
+        );
+
+
+        return goal;
+
+    },
+
+
+    getCurrent() {
+
+        return state.currentGoal;
+
+    },
+
+
+    update(
+        changes = {}
+    ) {
+
+        if (
+            !state.currentGoal
+        ) {
+
+            return {
+
+                success:
+                    false,
+
+                message:
+                    "No active goal."
+
+            };
+
+        }
+
+
+        Object.assign(
             state.currentGoal,
-
-        currentPlan:
-            state.currentPlan,
-
-        personality:
-            state.personality,
-
-        selfState:
-            state.self,
-
-        system: {
-
-            environment:
-                "web",
-
-            capabilities: [
-
-                "text_input",
-
-                "voice_output",
-
-                "persistent_memory",
-
-                "goal_management",
-
-                "planning",
-
-                "decision_support",
-
-                "reflection"
-
-            ],
-
-            limitations: [
-
-                "no_android_control",
-
-                "no_microphone",
-
-                "no_background_service",
-
-                "no_direct_phone_access"
-
-            ]
-
-        }
-
-    };
-
-}
-
-
-/* ========================================================
-   AI MODEL ENGINE
-======================================================== */
-
-const AI = {
-
-    async analyze(
-        userMessage
-    ) {
-
-        if (
-            !AI_CONFIG.enabled
-        ) {
-
-            throw new Error(
-                "AI model is disabled. Configure ai-config.js."
-            );
-
-        }
-
-
-        if (
-            !AI_CONFIG.endpoint
-        ) {
-
-            throw new Error(
-                "AI endpoint is missing."
-            );
-
-        }
-
-
-        const systemPrompt = `
-
-You are the cognitive model of J.A.R.V.I.S.
-
-You are NOT a simple chatbot.
-
-Your responsibility is to understand the user's message,
-reason over context, memory, goals and current state,
-decide what operation is required, and return a structured
-cognitive decision.
-
-Do NOT execute code.
-
-Do NOT invent capabilities.
-
-Do NOT claim access to Android when running in Web.
-
-Do NOT claim consciousness.
-
-Do NOT expose hidden chain-of-thought.
-
-Return ONLY valid JSON.
-
-Schema:
-
-{
-  "intent": "",
-  "subIntent": "",
-  "goal": null,
-  "memoryAction": "none|save|recall|forget|search",
-  "memoryQuery": null,
-  "factsToSave": [],
-  "constraints": [],
-  "preferences": [],
-  "needsPlanning": false,
-  "needsDecision": false,
-  "needsSearch": false,
-  "requiresContext": false,
-  "requiresConfirmation": false,
-  "emotionEstimate": "neutral",
-  "urgency": 0,
-  "confidence": 0,
-  "responseStyle": {
-      "tone": "calm",
-      "concise": false
-  },
-  "toolCalls": [],
-  "answer": "",
-  "decisionSummary": ""
-}
-
-Possible intents:
-
-greeting
-memory_save
-memory_recall
-memory_forget
-memory_search
-status
-settings
-personality_change
-behavior_change
-goal
-planning
-decision
-task_start
-task_update
-question
-conversation
-unknown
-
-IMPORTANT:
-
-The field "answer" should be the natural response
-to the user when no further execution is required.
-
-For actions involving memory/planning/tools,
-return structured data first.
-
-When the user says something like:
-
-"أنا متأخر النهارده وعندي مذاكرة برمجة وعايز أخلص بسرعة
-لكن آخر مرة الخطة السريعة مشت بشكل وحش"
-
-you MUST infer:
-
-goal
-urgency
-constraints
-relevant past experience
-planning preference
-
-Do not require exact keywords.
-
-Use previous conversation and memory.
-
-Do not invent memories.
-
-If information is absent, say so through uncertainty.
-
-`;
-
-        const context =
-            buildModelContext();
-
-
-        const body = {
-
-            model:
-                AI_CONFIG.model,
-
-            temperature:
-                AI_CONFIG.temperature,
-
-            max_tokens:
-                AI_CONFIG.maxTokens,
-
-            messages: [
-
-                {
-
-                    role:
-                        "system",
-
-                    content:
-                        systemPrompt
-
-                },
-
-                {
-
-                    role:
-                        "user",
-
-                    content:
-
-                        JSON.stringify({
-
-                            context,
-
-                            currentMessage:
-                                userMessage
-
-                        })
-
-                }
-
-            ]
-
-        };
-
-
-        const headers = {
-
-            "Content-Type":
-                "application/json"
-
-        };
-
-
-        if (
-            AI_CONFIG.apiKey
-        ) {
-
-            headers.Authorization =
-                `Bearer ${AI_CONFIG.apiKey}`;
-
-        }
-
-
-        const response =
-            await fetch(
-                AI_CONFIG.endpoint,
-                {
-
-                    method:
-                        "POST",
-
-                    headers,
-
-                    body:
-                        JSON.stringify(
-                            body
-                        )
-
-                }
-            );
-
-
-        if (!response.ok) {
-
-            const message =
-                await response.text();
-
-
-            throw new Error(
-                `AI HTTP ${response.status}: ${message}`
-            );
-
-        }
-
-
-        const data =
-            await response.json();
-
-
-        const raw =
-            data?.choices?.[0]
-                ?.message
-                ?.content
-            ??
-            data?.output_text
-            ??
-            data?.response;
-
-
-        if (!raw) {
-
-            throw new Error(
-                "AI returned empty response."
-            );
-
-        }
-
-
-        let parsed;
-
-        try {
-
-            parsed =
-                JSON.parse(
-                    String(raw)
-                        .replace(
-                            /^```json/i,
-                            ""
-                        )
-                        .replace(
-                            /```$/i,
-                            ""
-                        )
-                        .trim()
-                );
-
-        } catch {
-
-            throw new Error(
-                "AI did not return valid JSON."
-            );
-
-        }
-
-
-        return parsed;
-
-    }
-
-};
-
-
-/* ========================================================
-   SAFETY / TOOL VALIDATION
-======================================================== */
-
-const ToolEngine = {
-
-    async execute(
-        name,
-        args = {}
-    ) {
-
-        /*
-        The web build intentionally exposes
-        only safe local tools.
-        Android tools will be attached later
-        through a native bridge.
-        */
-
-        switch (name) {
-
-            case "memory.search":
-
-                return {
-
-                    success:
-                        true,
-
-                    result:
-                        MemoryEngine.search(
-                            args.query
-                        )
-
-                };
-
-
-            case "memory.save":
-
-                return {
-
-                    success:
-                        MemoryEngine.save(
-                            args.text,
-                            args.category
-                        ),
-
-                    result:
-                        "saved"
-
-                };
-
-
-            case "memory.forget":
-
-                return {
-
-                    success:
-                        true,
-
-                    result:
-                        MemoryEngine.forget(
-                            args.query
-                        )
-
-                };
-
-
-            case "system.status":
-
-                return {
-
-                    success:
-                        true,
-
-                    result:
-                        buildModelContext()
-                            .system
-
-                };
-
-
-            default:
-
-                return {
-
-                    success:
-                        false,
-
-                    error:
-                        `Tool "${name}" غير متاحة في Web Lab.`
-
-                };
-
-        }
-
-    }
-
-};
-
-
-/* ========================================================
-   PLAN ENGINE
-======================================================== */
-
-const Planner = {
-
-    async create(
-        goal,
-        analysis
-    ) {
-
-        /*
-        The MODEL selects the strategy.
-        JS merely materializes a structured plan.
-        */
-
-        const constraints =
-            analysis.constraints ||
-            [];
-
-
-        const plans = [
-
+            changes,
             {
-
-                id:
-                    "A",
-
-                name:
-                    "Fast",
-
-                estimatedEffort:
-                    "low",
-
-                risk:
-                    .35
-
-            },
-
-            {
-
-                id:
-                    "B",
-
-                name:
-                    "Balanced",
-
-                estimatedEffort:
-                    "medium",
-
-                risk:
-                    .18
-
-            },
-
-            {
-
-                id:
-                    "C",
-
-                name:
-                    "Deep",
-
-                estimatedEffort:
-                    "high",
-
-                risk:
-                    .10
-
+                updatedAt:
+                    Date.now()
             }
+        );
 
-        ];
+
+        saveState();
 
 
-        /*
-        We intentionally don't choose the plan
-        using hardcoded user keywords.
+        EventBus.emit(
+            "GOAL_UPDATED",
+            changes
+        );
 
-        We keep candidate plans,
-        then let the model decide if needed.
-        */
 
-        const selected =
-            plans[1];
+        return {
 
+            success:
+                true,
+
+            goal:
+                state.currentGoal
+
+        };
+
+    },
+
+
+    complete() {
+
+        if (
+            !state.currentGoal
+        ) {
+
+            return {
+
+                success:
+                    false
+
+            };
+
+        }
+
+
+        state.currentGoal.status =
+            "completed";
+
+
+        state.currentGoal.updatedAt =
+            Date.now();
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "GOAL_COMPLETED",
+            state.currentGoal
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            goal:
+                state.currentGoal
+
+        };
+
+    }
+
+};
+
+
+/* =========================================================
+   TASK ENGINE
+========================================================= */
+
+const TaskEngine = {
+
+    create(
+        title,
+        goalId = null
+    ) {
+
+        const task = {
+
+            id:
+                Date.now() +
+                "_" +
+                Math.random()
+                    .toString(36)
+                    .slice(2),
+
+            title:
+
+                String(
+                    title
+                ).trim(),
+
+            goalId:
+                goalId ||
+                state.currentGoal?.id ||
+                null,
+
+            status:
+                "pending",
+
+            attempts:
+                0,
+
+            createdAt:
+                Date.now(),
+
+            updatedAt:
+                Date.now()
+
+        };
+
+
+        state.tasks.push(
+            task
+        );
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "TASK_CREATED",
+            task
+        );
+
+
+        return task;
+
+    },
+
+
+    start(
+        id
+    ) {
+
+        const task =
+            state.tasks.find(
+                item =>
+                    item.id === id
+            );
+
+
+        if (!task) {
+
+            return {
+
+                success:
+                    false,
+
+                message:
+                    "Task not found."
+
+            };
+
+        }
+
+
+        task.status =
+            "running";
+
+
+        task.attempts++;
+
+
+        task.updatedAt =
+            Date.now();
+
+
+        state.currentTask =
+            task;
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "TASK_STARTED",
+            task
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            task
+
+        };
+
+    },
+
+
+    complete(
+        id,
+        result = null
+    ) {
+
+        const task =
+            state.tasks.find(
+                item =>
+                    item.id === id
+            );
+
+
+        if (!task) {
+
+            return {
+
+                success:
+                    false
+
+            };
+
+        }
+
+
+        task.status =
+            "completed";
+
+
+        task.result =
+            result;
+
+
+        task.completedAt =
+            Date.now();
+
+
+        task.updatedAt =
+            Date.now();
+
+
+        if (
+            state.currentTask?.id ===
+            id
+        ) {
+
+            state.currentTask =
+                null;
+
+        }
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "TASK_COMPLETED",
+            task
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            task
+
+        };
+
+    },
+
+
+    fail(
+        id,
+        reason
+    ) {
+
+        const task =
+            state.tasks.find(
+                item =>
+                    item.id === id
+            );
+
+
+        if (!task) {
+
+            return {
+
+                success:
+                    false
+
+            };
+
+        }
+
+
+        task.status =
+            "failed";
+
+
+        task.failure =
+            String(
+                reason ||
+                "Unknown failure."
+            );
+
+
+        task.updatedAt =
+            Date.now();
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "TASK_FAILED",
+            task
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            task
+
+        };
+
+    },
+
+
+    retry(
+        id
+    ) {
+
+        const task =
+            state.tasks.find(
+                item =>
+                    item.id === id
+            );
+
+
+        if (!task) {
+
+            return {
+
+                success:
+                    false
+
+            };
+
+        }
+
+
+        if (
+            task.attempts >=
+            AI_CONFIG.maxRetries
+        ) {
+
+            return {
+
+                success:
+                    false,
+
+                message:
+                    "Maximum retry limit reached."
+
+            };
+
+        }
+
+
+        task.status =
+            "pending";
+
+
+        task.attempts++;
+
+
+        task.updatedAt =
+            Date.now();
+
+
+        state.agent.retries++;
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "TASK_RETRY",
+            task
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            task
+
+        };
+
+    },
+
+
+    current() {
+
+        return state.currentTask;
+
+    }
+
+};
+
+
+/* =========================================================
+   PLAN ENGINE
+========================================================= */
+
+const PlanEngine = {
+
+    create(
+        goal,
+        options = {}
+    ) {
 
         const plan = {
 
+            id:
+                Date.now() +
+                "_" +
+                Math.random()
+                    .toString(36)
+                    .slice(2),
+
             goal,
 
-            constraints,
+            rationale:
+                options.rationale ||
+                "",
 
-            candidates:
-                plans,
+            steps:
+                Array.isArray(
+                    options.steps
+                )
+                    ? options.steps
+                    : [],
 
-            selected,
+            alternatives:
+                Array.isArray(
+                    options.alternatives
+                )
+                    ? options.alternatives
+                    : [],
+
+            selectedStrategy:
+                options.selectedStrategy ||
+                null,
 
             status:
                 "ready",
 
             createdAt:
+                Date.now(),
+
+            updatedAt:
                 Date.now()
 
         };
@@ -1168,342 +1558,1453 @@ const Planner = {
         renderPlan();
 
 
-        return plan;
+        return {
 
-    }
+            success:
+                true,
 
-};
-
-
-/* ========================================================
-   GOAL ENGINE
-======================================================== */
-
-const GoalEngine = {
-
-    create(
-        goal,
-        analysis
-    ) {
-
-        const newGoal = {
-
-            id:
-                Date.now(),
-
-            title:
-                goal,
-
-            urgency:
-                analysis.urgency ||
-                0,
-
-            constraints:
-                analysis.constraints ||
-                [],
-
-            preferences:
-                analysis.preferences ||
-                [],
-
-            status:
-                "active",
-
-            createdAt:
-                Date.now()
+            plan
 
         };
 
+    },
 
-        state.goals.push(
-            newGoal
+
+    update(
+        changes = {}
+    ) {
+
+        if (
+            !state.currentPlan
+        ) {
+
+            return {
+
+                success:
+                    false,
+
+                message:
+                    "No active plan."
+
+            };
+
+        }
+
+
+        Object.assign(
+            state.currentPlan,
+            changes,
+            {
+                updatedAt:
+                    Date.now()
+            }
         );
-
-
-        state.currentGoal =
-            newGoal;
 
 
         saveState();
 
 
         EventBus.emit(
-            "GOAL_CREATED",
-            newGoal
+            "PLAN_UPDATED",
+            changes
         );
 
 
-        return newGoal;
+        renderPlan();
+
+
+        return {
+
+            success:
+                true,
+
+            plan:
+                state.currentPlan
+
+        };
+
+    },
+
+
+    get() {
+
+        return state.currentPlan;
 
     }
 
 };
 
 
-/* ========================================================
-   COGNITIVE ORCHESTRATOR
-======================================================== */
+/* =========================================================
+   WEB SEARCH FALLBACK
+========================================================= */
 
-const CognitiveCore = {
+const WebSearchFallback = {
 
-    async process(
-        message
+    async search(
+        query
     ) {
 
-        state.self.mode =
-            "understanding";
+        const clean =
+            String(
+                query || ""
+            ).trim();
 
 
-        renderState();
+        if (!clean) {
 
+            return {
 
-        EventBus.emit(
-            "USER_INPUT",
-            {
-                message
-            }
-        );
+                success:
+                    false,
 
+                message:
+                    "Empty search query."
 
-        /*
-        ====================================================
-        UNDERSTANDING
-        ====================================================
-        */
-
-        const analysis =
-            await AI.analyze(
-                message
-            );
-
-
-        state.lastAnalysis =
-            analysis;
-
-
-        state.self.confidence =
-            clamp(
-                analysis.confidence ||
-                .5
-            );
-
-
-        state.self.uncertainty =
-            1 -
-            state.self.confidence;
-
-
-        state.self.emotionEstimate =
-            analysis.emotionEstimate ||
-            "neutral";
-
-
-        renderAnalysis();
-
-
-        /*
-        ====================================================
-        MEMORY
-        ====================================================
-        */
-
-        if (
-            analysis.memoryAction ===
-            "save"
-        ) {
-
-            for (
-                const fact
-                of analysis.factsToSave ||
-                []
-            ) {
-
-                MemoryEngine.save(
-                    fact
-                );
-
-            }
-
-        }
-
-
-        if (
-            analysis.memoryAction ===
-            "forget"
-        ) {
-
-            if (
-                analysis.memoryQuery
-            ) {
-
-                MemoryEngine.forget(
-                    analysis.memoryQuery
-                );
-
-            }
-
-        }
-
-
-        let reply =
-            "";
-
-
-        /*
-        ====================================================
-        GOAL
-        ====================================================
-        */
-
-        if (
-            analysis.goal &&
-            (
-                analysis.intent ===
-                    "goal" ||
-                analysis.intent ===
-                    "planning"
-            )
-        ) {
-
-            GoalEngine.create(
-                analysis.goal,
-                analysis
-            );
+            };
 
         }
 
 
         /*
-        ====================================================
-        PLANNING
-        ====================================================
+        -----------------------------------------------------
+        1) Custom endpoint
+        -----------------------------------------------------
         */
 
         if (
-            analysis.needsPlanning ||
-            analysis.intent ===
-                "planning"
+            AI_CONFIG.fallbackSearchEndpoint
         ) {
 
-            if (
-                !state.currentGoal &&
-                analysis.goal
-            ) {
+            try {
 
-                GoalEngine.create(
-                    analysis.goal,
-                    analysis
-                );
+                const response =
+                    await fetch(
+                        AI_CONFIG
+                            .fallbackSearchEndpoint +
+                        "?q=" +
+                        encodeURIComponent(
+                            clean
+                        )
+                    );
 
-            }
-
-
-            if (
-                state.currentGoal
-            ) {
-
-                await Planner.create(
-
-                    state.currentGoal
-                        .title,
-
-                    analysis
-
-                );
-
-            }
-
-        }
-
-
-        /*
-        ====================================================
-        AI TOOL CALLS
-        ====================================================
-        */
-
-        if (
-            Array.isArray(
-                analysis.toolCalls
-            )
-        ) {
-
-            for (
-                const call
-                of analysis.toolCalls
-            ) {
 
                 if (
-                    !call ||
-                    typeof call.name !==
-                        "string"
+                    response.ok
                 ) {
 
-                    continue;
+                    const data =
+                        await response.json();
+
+
+                    state.agent
+                        .webSearchUsed =
+                        true;
+
+
+                    return {
+
+                        success:
+                            true,
+
+                        source:
+                            "custom_search_endpoint",
+
+                        query:
+                            clean,
+
+                        results:
+                            data
+
+                    };
+
+                }
+
+            } catch (
+                error
+            ) {
+
+                console.warn(
+                    "[FALLBACK SEARCH]",
+                    error
+                );
+
+            }
+
+        }
+
+
+        /*
+        -----------------------------------------------------
+        2) DuckDuckGo Instant Answer
+        -----------------------------------------------------
+        */
+
+        try {
+
+            const response =
+                await fetch(
+
+                    "https://api.duckduckgo.com/" +
+
+                    "?q=" +
+                    encodeURIComponent(
+                        clean
+                    ) +
+
+                    "&format=json" +
+
+                    "&no_html=1" +
+
+                    "&skip_disambig=1"
+
+                );
+
+
+            if (
+                response.ok
+            ) {
+
+                const data =
+                    await response.json();
+
+
+                const results = [];
+
+
+                if (
+                    data.AbstractText
+                ) {
+
+                    results.push({
+
+                        title:
+                            data.Heading ||
+                            "DuckDuckGo",
+
+                        text:
+                            data.AbstractText,
+
+                        url:
+                            data.AbstractURL ||
+                            ""
+
+                    });
 
                 }
 
 
-                const result =
-                    await ToolEngine.execute(
-                        call.name,
-                        call.arguments ||
-                        {}
-                    );
+                for (
+                    const item
+                    of
+                    flattenDuckTopics(
+                        data.RelatedTopics ||
+                        []
+                    ).slice(
+                        0,
+                        8
+                    )
+                ) {
+
+                    results.push({
+
+                        title:
+                            item.Text,
+
+                        text:
+                            item.Text,
+
+                        url:
+                            item.FirstURL ||
+                            ""
+
+                    });
+
+                }
+
+
+                state.agent
+                    .webSearchUsed =
+                    true;
 
 
                 EventBus.emit(
-                    "TOOL_EXECUTION",
+                    "WEB_SEARCH_FALLBACK",
                     {
-                        call,
-                        result
+                        query:
+                            clean,
+
+                        resultCount:
+                            results.length
                     }
                 );
 
+
+                return {
+
+                    success:
+                        true,
+
+                    source:
+                        "duckduckgo",
+
+                    query:
+                        clean,
+
+                    results
+
+                };
+
             }
+
+        } catch (
+            error
+        ) {
+
+            console.warn(
+                "[DUCK SEARCH]",
+                error
+            );
 
         }
 
 
-        /*
-        ====================================================
-        RESPONSE
-        ====================================================
-        */
+        return {
 
-        reply =
-            analysis.answer ||
-            analysis.decisionSummary ||
-            defaultResponse(
-                analysis
+            success:
+                false,
+
+            message:
+                "Fallback web search failed."
+
+        };
+
+    }
+
+};
+
+
+function flattenDuckTopics(
+    topics,
+    output = []
+) {
+
+    for (
+        const topic
+        of topics || []
+    ) {
+
+        if (
+            topic.Topics
+        ) {
+
+            flattenDuckTopics(
+                topic.Topics,
+                output
             );
 
+        } else if (
+            topic.Text
+        ) {
 
-        /*
-        ====================================================
-        REFLECTION
-        ====================================================
-        */
+            output.push(
+                topic
+            );
+
+        }
+
+    }
+
+
+    return output;
+
+}
+
+
+/* =========================================================
+   TIME TOOL
+========================================================= */
+
+function getCurrentTime() {
+
+    const date =
+        new Date();
+
+
+    return {
+
+        iso:
+            date.toISOString(),
+
+        local:
+            date.toLocaleString(
+                "ar-EG"
+            ),
+
+        hour:
+            date.getHours(),
+
+        minute:
+            date.getMinutes(),
+
+        day:
+            date.toLocaleDateString(
+                "ar-EG",
+                {
+                    weekday:
+                        "long"
+                }
+            )
+
+    };
+
+}
+
+
+/* =========================================================
+   TOOL REGISTRY
+========================================================= */
+
+const Tools = {
+
+    definitions() {
+
+        return [
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "memory_search",
+
+                    description:
+                        "Search long-term user memory.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            query: {
+
+                                type:
+                                    "string"
+
+                            }
+
+                        },
+
+                        required: [
+                            "query"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "memory_save",
+
+                    description:
+                        "Save durable information about the user.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            text: {
+
+                                type:
+                                    "string"
+
+                            },
+
+                            category: {
+
+                                type:
+                                    "string"
+
+                            }
+
+                        },
+
+                        required: [
+                            "text"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "memory_forget",
+
+                    description:
+                        "Remove information from memory.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            query: {
+
+                                type:
+                                    "string"
+
+                            }
+
+                        },
+
+                        required: [
+                            "query"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "goal_create",
+
+                    description:
+                        "Create the user's active goal.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            title: {
+
+                                type:
+                                    "string"
+
+                            },
+
+                            urgency: {
+
+                                type:
+                                    "number"
+
+                            },
+
+                            constraints: {
+
+                                type:
+                                    "array",
+
+                                items: {
+                                    type:
+                                        "string"
+                                }
+
+                            },
+
+                            preferences: {
+
+                                type:
+                                    "array",
+
+                                items: {
+                                    type:
+                                        "string"
+                                }
+
+                            }
+
+                        },
+
+                        required: [
+                            "title"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "goal_get",
+
+                    description:
+                        "Get current active goal.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "goal_update",
+
+                    description:
+                        "Update active goal.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            title: {
+                                type:
+                                    "string"
+                            },
+
+                            urgency: {
+                                type:
+                                    "number"
+                            },
+
+                            constraints: {
+                                type:
+                                    "array",
+                                items: {
+                                    type:
+                                        "string"
+                                }
+                            },
+
+                            preferences: {
+                                type:
+                                    "array",
+                                items: {
+                                    type:
+                                        "string"
+                                }
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "goal_complete",
+
+                    description:
+                        "Mark current goal complete.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "plan_create",
+
+                    description:
+                        "Create or replace the active plan.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            goal: {
+                                type:
+                                    "string"
+                            },
+
+                            rationale: {
+                                type:
+                                    "string"
+                            },
+
+                            selectedStrategy: {
+                                type:
+                                    "string"
+                            },
+
+                            steps: {
+                                type:
+                                    "array",
+                                items: {
+                                    type:
+                                        "string"
+                                }
+                            },
+
+                            alternatives: {
+                                type:
+                                    "array",
+                                items: {
+                                    type:
+                                        "object"
+                                }
+                            }
+
+                        },
+
+                        required: [
+                            "goal",
+                            "steps"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "plan_get",
+
+                    description:
+                        "Get active plan.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "plan_update",
+
+                    description:
+                        "Modify the active plan.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            steps: {
+                                type:
+                                    "array",
+                                items: {
+                                    type:
+                                        "string"
+                                }
+                            },
+
+                            rationale: {
+                                type:
+                                    "string"
+                            },
+
+                            selectedStrategy: {
+                                type:
+                                    "string"
+                            },
+
+                            status: {
+                                type:
+                                    "string"
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_create",
+
+                    description:
+                        "Create a task.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            title: {
+                                type:
+                                    "string"
+                            },
+
+                            goalId: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "title"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_start",
+
+                    description:
+                        "Start a task.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            id: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "id"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_complete",
+
+                    description:
+                        "Complete a task and store its result.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            id: {
+                                type:
+                                    "string"
+                            },
+
+                            result: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "id"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_fail",
+
+                    description:
+                        "Mark a task as failed.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            id: {
+                                type:
+                                    "string"
+                            },
+
+                            reason: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "id",
+                            "reason"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_retry",
+
+                    description:
+                        "Retry a failed task within retry limits.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            id: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "id"
+                        ]
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "task_current",
+
+                    description:
+                        "Get current task.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "system_status",
+
+                    description:
+                        "Get current JARVIS system state.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "time_now",
+
+                    description:
+                        "Get current local time.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {}
+
+                    }
+
+                }
+
+            },
+
+
+            {
+                type:
+                    "function",
+
+                function: {
+
+                    name:
+                        "web_search",
+
+                    description:
+                        "Search the web when current, external, recent or unknown information is required. This is the application fallback search tool.",
+
+                    parameters: {
+
+                        type:
+                            "object",
+
+                        properties: {
+
+                            query: {
+                                type:
+                                    "string"
+                            }
+
+                        },
+
+                        required: [
+                            "query"
+                        ]
+
+                    }
+
+                }
+
+            }
+
+        ];
+
+    },
+
+
+    async execute(
+        name,
+        args = {}
+    ) {
+
+        state.agent.toolCalls++;
+
+
+        state.agent.lastTool =
+            name;
+
 
         EventBus.emit(
-            "REFLECTION",
+            "TOOL_START",
             {
-
-                intent:
-                    analysis.intent,
-
-                success:
-                    true,
-
-                confidence:
-                    state.self.confidence
-
+                name,
+                args
             }
         );
 
 
-        state.self.mode =
-            "idle";
+        let result;
+
+
+        switch (
+            name
+        ) {
+
+            case "memory_search":
+
+                result =
+                    MemoryEngine.recall(
+                        args.query ||
+                        ""
+                    );
+
+                break;
+
+
+            case "memory_save":
+
+                result =
+                    MemoryEngine.save(
+                        args.text,
+                        args.category
+                    );
+
+                break;
+
+
+            case "memory_forget":
+
+                result =
+                    MemoryEngine.forget(
+                        args.query
+                    );
+
+                break;
+
+
+            case "goal_create":
+
+                result =
+                    GoalEngine.create(
+                        args.title,
+                        {
+                            urgency:
+                                args.urgency,
+
+                            constraints:
+                                args.constraints,
+
+                            preferences:
+                                args.preferences
+                        }
+                    );
+
+                break;
+
+
+            case "goal_get":
+
+                result =
+                    GoalEngine.getCurrent();
+
+                break;
+
+
+            case "goal_update":
+
+                result =
+                    GoalEngine.update(
+                        args
+                    );
+
+                break;
+
+
+            case "goal_complete":
+
+                result =
+                    GoalEngine.complete();
+
+                break;
+
+
+            case "plan_create":
+
+                result =
+                    PlanEngine.create(
+                        args.goal,
+                        args
+                    );
+
+                break;
+
+
+            case "plan_get":
+
+                result =
+                    PlanEngine.get();
+
+                break;
+
+
+            case "plan_update":
+
+                result =
+                    PlanEngine.update(
+                        args
+                    );
+
+                break;
+
+
+            case "task_create":
+
+                result =
+                    TaskEngine.create(
+                        args.title,
+                        args.goalId
+                    );
+
+                break;
+
+
+            case "task_start":
+
+                result =
+                    TaskEngine.start(
+                        args.id
+                    );
+
+                break;
+
+
+            case "task_complete":
+
+                result =
+                    TaskEngine.complete(
+                        args.id,
+                        args.result
+                    );
+
+                break;
+
+
+            case "task_fail":
+
+                result =
+                    TaskEngine.fail(
+                        args.id,
+                        args.reason
+                    );
+
+                break;
+
+
+            case "task_retry":
+
+                result =
+                    TaskEngine.retry(
+                        args.id
+                    );
+
+                break;
+
+
+            case "task_current":
+
+                result =
+                    TaskEngine.current();
+
+                break;
+
+
+            case "system_status":
+
+                result = {
+
+                    system:
+                        state.system,
+
+                    self:
+                        state.self,
+
+                    goal:
+                        state.currentGoal,
+
+                    plan:
+                        state.currentPlan,
+
+                    task:
+                        state.currentTask,
+
+                    agent:
+                        state.agent
+
+                };
+
+                break;
+
+
+            case "time_now":
+
+                result =
+                    getCurrentTime();
+
+                break;
+
+
+            case "web_search":
+
+                result =
+                    await WebSearchFallback
+                        .search(
+                            args.query
+                        );
+
+                break;
+
+
+            default:
+
+                result = {
+
+                    success:
+                        false,
+
+                    message:
+                        `Unknown tool: ${name}`
+
+                };
+
+        }
+
+
+        state.agent.lastToolResult =
+            result;
+
+
+        EventBus.emit(
+            "TOOL_RESULT",
+            {
+                name,
+                result
+            }
+        );
 
 
         saveState();
@@ -1512,124 +3013,1063 @@ const CognitiveCore = {
         renderAll();
 
 
-        return reply;
+        return result;
 
     }
 
 };
 
 
-/* ========================================================
-   DEFAULT RESPONSE
-======================================================== */
+/* =========================================================
+   MODEL SYSTEM PROMPT
+========================================================= */
 
-function defaultResponse(
-    analysis
+function buildSystemPrompt() {
+
+    const personality =
+        state.personality;
+
+
+    return `
+You are J.A.R.V.I.S, an AI cognitive agent.
+
+You are NOT a basic chatbot.
+
+Your job is to understand, reason, decide, use tools, observe results,
+revise plans when necessary, learn from outcomes, and then communicate
+naturally with the user.
+
+IMPORTANT:
+
+1. Never pretend you performed an action when no tool/result proves it.
+2. Never claim Android/device access while running in the Web environment.
+3. Never claim real consciousness.
+4. Use memory when relevant.
+5. Use the current goal and plan as working context.
+6. If the user gives a short command like "ابدأ", resolve it using context.
+7. If a task fails, analyze the failure and consider retrying or replanning.
+8. Use web_search when current external information is needed.
+9. Do not ask unnecessary clarification when context makes the intent clear.
+10. Do not dump internal chain-of-thought. Give concise decision summaries instead.
+11. Think step-by-step internally, but only expose useful conclusions, reasons, and actions.
+12. Speak naturally, not like a form or a command parser.
+13. Do not repeat information unnecessarily.
+14. When the user changes your style, preserve the preference.
+15. Use the user's history and preferences when they materially help.
+
+PERSONALITY:
+
+Address:
+${personality.address}
+
+Tone:
+${personality.tone}
+
+Concise:
+${personality.concise}
+
+Formality:
+${personality.formal}
+
+Humor:
+${personality.humor}
+
+Warmth:
+${personality.warmth}
+
+CURRENT WORLD:
+
+${safeJson({
+
+    system:
+        state.system,
+
+    self:
+        state.self,
+
+    goal:
+        state.currentGoal,
+
+    plan:
+        state.currentPlan,
+
+    task:
+        state.currentTask,
+
+    agent:
+        state.agent
+
+})}
+
+RECENT MEMORY:
+
+${safeJson(
+    MemoryEngine
+        .all()
+        .slice(-30)
+)}
+
+RECENT CONVERSATION:
+
+${Conversation.context(16)}
+
+AVAILABLE LOCAL TOOLS:
+
+memory_search
+memory_save
+memory_forget
+
+goal_create
+goal_get
+goal_update
+goal_complete
+
+plan_create
+plan_get
+plan_update
+
+task_create
+task_start
+task_complete
+task_fail
+task_retry
+task_current
+
+system_status
+time_now
+
+web_search
+
+When a tool is needed, call it.
+
+After receiving tool results, continue reasoning and act again if necessary.
+
+Complete the user's request when the evidence is sufficient.
+`.trim();
+
+}
+
+
+/* =========================================================
+   GROQ CALL
+========================================================= */
+
+async function callGroq(
+    messages
 ) {
 
-    switch (
-        analysis.intent
+    if (
+        !AI_CONFIG.enabled
     ) {
 
-        case "memory_save":
+        throw new Error(
+            "Groq AI is disabled."
+        );
 
-            return (
-                "تم حفظ المعلومة في الذاكرة."
-            );
+    }
 
 
-        case "memory_recall": {
+    if (
+        !AI_CONFIG.endpoint
+    ) {
 
-            const memories =
-                MemoryEngine.all();
+        throw new Error(
+            "Groq endpoint is missing."
+        );
 
+    }
+
+
+    if (
+        !AI_CONFIG.apiKey ||
+        AI_CONFIG.apiKey ===
+            "ضع_مفتاح_Groq_هنا"
+    ) {
+
+        throw new Error(
+            "Groq API key is missing."
+        );
+
+    }
+
+
+    const body = {
+
+        model:
+            AI_CONFIG.model,
+
+        messages,
+
+        temperature:
+            AI_CONFIG.temperature,
+
+        max_tokens:
+            AI_CONFIG.maxTokens,
+
+        reasoning_effort:
+            AI_CONFIG.reasoningEffort,
+
+        tool_choice:
+            "auto",
+
+        parallel_tool_calls:
+            true,
+
+        tools:
+            Tools.definitions()
+
+    };
+
+
+    /*
+    Groq GPT-OSS supports Browser Search
+    as a built-in tool.
+
+    We include it only when enabled.
+    */
+
+    if (
+        AI_CONFIG.browserSearch
+    ) {
+
+        body.tools.push({
+
+            type:
+                "browser_search"
+
+        });
+
+    }
+
+
+    const response =
+        await fetch(
+            AI_CONFIG.endpoint,
+            {
+
+                method:
+                    "POST",
+
+                headers: {
+
+                    "Content-Type":
+                        "application/json",
+
+                    "Authorization":
+                        `Bearer ${AI_CONFIG.apiKey}`
+
+                },
+
+                body:
+                    JSON.stringify(
+                        body
+                    )
+
+            }
+        );
+
+
+    if (
+        !response.ok
+    ) {
+
+        const text =
+            await response.text();
+
+
+        throw new Error(
+            `Groq HTTP ${response.status}: ${text}`
+        );
+
+    }
+
+
+    const data =
+        await response.json();
+
+
+    const message =
+        data?.choices?.[0]
+            ?.message;
+
+
+    if (!message) {
+
+        throw new Error(
+            "Groq returned no message."
+        );
+
+    }
+
+
+    /*
+    Best-effort detection that a built-in tool
+    actually ran.
+    */
+
+    if (
+        Array.isArray(
+            message.executed_tools
+        ) &&
+        message.executed_tools.length
+    ) {
+
+        state.agent
+            .webSearchUsed =
+            true;
+
+    }
+
+
+    return {
+
+        data,
+
+        message
+
+    };
+
+}
+
+
+/* =========================================================
+   WEB SEARCH WATCHDOG
+========================================================= */
+
+function shouldSearchWeb(
+    message
+) {
+
+    const n =
+        normalizeArabic(
+            message
+        );
+
+
+    const freshness = [
+
+        "اليوم",
+
+        "دلوقتي",
+
+        "حاليا",
+
+        "احدث",
+
+        "اخر",
+
+        "هذا الاسبوع",
+
+        "النهارده",
+
+        "اسعار",
+
+        "سعر",
+
+        "الطقس",
+
+        "اخبار",
+
+        "اخبار اليوم",
+
+        "من هو",
+
+        "ما الجديد",
+
+        "ابحث",
+
+        "دور لي",
+
+        "دورلي",
+
+        "ابحث لي",
+
+        "مصدر",
+
+        "مراجع"
+
+    ];
+
+
+    return freshness.some(
+        word =>
+            n.includes(
+                word
+            )
+    );
+
+}
+
+
+/* =========================================================
+   AGENT LOOP
+========================================================= */
+
+const Agent = {
+
+    async run(
+        userMessage
+    ) {
+
+        state.agent.iteration =
+            0;
+
+        state.agent.toolCalls =
+            0;
+
+        state.agent.retries =
+            0;
+
+        state.agent.lastTool =
+            null;
+
+        state.agent.lastToolResult =
+            null;
+
+        state.agent.webSearchUsed =
+            false;
+
+        state.agent.cycleStartedAt =
+            Date.now();
+
+
+        state.self.confidence =
+            0.5;
+
+
+        state.self.uncertainty =
+            0.5;
+
+
+        state.self.emotionEstimate =
+            "neutral";
+
+
+        EventBus.emit(
+            "AGENT_START",
+            {
+                message:
+                    userMessage
+            }
+        );
+
+
+        const messages = [
+
+            {
+
+                role:
+                    "system",
+
+                content:
+                    buildSystemPrompt()
+
+            },
+
+            ...Conversation
+                .recent(
+                    16
+                )
+                .map(
+                    message =>
+                        ({
+
+                            role:
+                                message.role ===
+                                    "assistant"
+                                    ? "assistant"
+                                    : "user",
+
+                            content:
+                                message.text
+
+                        })
+                )
+
+        ];
+
+
+        /*
+        Add current message explicitly.
+        */
+
+        messages.push({
+
+            role:
+                "user",
+
+            content:
+                userMessage
+
+        });
+
+
+        for (
+            let iteration = 1;
+            iteration <=
+                AI_CONFIG.maxAgentIterations;
+            iteration++
+        ) {
+
+            state.agent.iteration =
+                iteration;
+
+
+            state.self.cognitiveState =
+                "reasoning";
+
+
+            renderAll();
+
+
+            const result =
+                await callGroq(
+                    messages
+                );
+
+
+            const assistantMessage =
+                result.message;
+
+
+            /*
+            -------------------------------------------------
+            MODEL TOOL CALLS
+            -------------------------------------------------
+            */
 
             if (
-                !memories.length
+                Array.isArray(
+                    assistantMessage
+                        .tool_calls
+                ) &&
+                assistantMessage
+                    .tool_calls.length
             ) {
 
-                return (
-                    "لا توجد معلومات محفوظة في ذاكرتي حتى الآن."
-                );
+                /*
+                Keep assistant message
+                in the loop.
+                */
+
+                messages.push({
+
+                    role:
+                        "assistant",
+
+                    content:
+                        assistantMessage
+                            .content ||
+                        null,
+
+                    tool_calls:
+                        assistantMessage
+                            .tool_calls
+
+                });
+
+
+                for (
+                    const toolCall
+                    of assistantMessage
+                        .tool_calls
+                ) {
+
+                    const name =
+                        toolCall
+                            ?.function
+                            ?.name;
+
+
+                    const rawArguments =
+                        toolCall
+                            ?.function
+                            ?.arguments ||
+                        "{}";
+
+
+                    let args = {};
+
+
+                    try {
+
+                        args =
+                            JSON.parse(
+                                rawArguments
+                            );
+
+                    } catch (
+                        error
+                    ) {
+
+                        args = {};
+
+
+                        EventBus.emit(
+                            "TOOL_ARGUMENT_ERROR",
+                            {
+                                name,
+                                rawArguments
+                            }
+                        );
+
+                    }
+
+
+                    let toolResult;
+
+
+                    try {
+
+                        toolResult =
+                            await Tools
+                                .execute(
+                                    name,
+                                    args
+                                );
+
+                    } catch (
+                        error
+                    ) {
+
+                        toolResult = {
+
+                            success:
+                                false,
+
+                            error:
+                                error.message
+
+                        };
+
+
+                        EventBus.emit(
+                            "TOOL_EXCEPTION",
+                            {
+                                name,
+                                error:
+                                    error.message
+                            }
+                        );
+
+                    }
+
+
+                    messages.push({
+
+                        role:
+                            "tool",
+
+                        tool_call_id:
+                            toolCall.id,
+
+                        name,
+
+                        content:
+                            safeJson(
+                                toolResult
+                            )
+
+                    });
+
+                }
+
+
+                /*
+                Send observation back to model.
+                */
+
+                state.self.cognitiveState =
+                    "observing";
+
+
+                renderAll();
+
+
+                continue;
 
             }
 
 
-            return [
+            /*
+            -------------------------------------------------
+            FINAL MODEL RESPONSE
+            -------------------------------------------------
+            */
 
-                "أتذكر:",
+            let finalText =
+                assistantMessage
+                    .content;
 
-                ...memories
-                    .map(
-                        m =>
-                            `• ${m.text}`
-                    )
 
-            ].join("\n");
+            if (
+                Array.isArray(
+                    finalText
+                )
+            ) {
+
+                finalText =
+                    finalText
+                        .map(
+                            part =>
+                                part?.text ||
+                                ""
+                        )
+                        .join("");
+
+            }
+
+
+            finalText =
+                String(
+                    finalText ||
+                    ""
+                ).trim();
+
+
+            /*
+            -------------------------------------------------
+            FALLBACK WEB WATCHDOG
+            -------------------------------------------------
+            
+            لو الرسالة تبدو بحثية/حديثة
+            والموديل لم يستخدم أي بحث،
+            نستخدم fallback ونرسل النتائج
+            للموديل مرة أخرى.
+            -------------------------------------------------
+            */
+
+            if (
+                AI_CONFIG.fallbackWebSearch &&
+                shouldSearchWeb(
+                    userMessage
+                ) &&
+                !state.agent.webSearchUsed
+            ) {
+
+                const fallback =
+                    await WebSearchFallback
+                        .search(
+                            userMessage
+                        );
+
+
+                if (
+                    fallback.success
+                ) {
+
+                    state.agent
+                        .webSearchUsed =
+                        true;
+
+
+                    messages.push({
+
+                        role:
+                            "assistant",
+
+                        content:
+                            finalText
+
+                    });
+
+
+                    messages.push({
+
+                        role:
+                            "user",
+
+                        content:
+                            `بحث احتياطي تلقائي من JARVIS:
+
+${safeJson(
+    fallback.results
+)}
+
+راجع المعلومات وأجب المستخدم بإجابة طبيعية.
+اذكر مصادر/روابط عندما تكون موجودة.
+لا تدّعي أنك زرت مصدرًا إذا لم يظهر في النتائج.`
+
+                    });
+
+
+                    state.self.cognitiveState =
+                        "reviewing";
+
+
+                    const reviewed =
+                        await callGroq(
+                            messages
+                        );
+
+
+                    finalText =
+                        String(
+                            reviewed
+                                ?.message
+                                ?.content ||
+                            finalText
+                        ).trim();
+
+                }
+
+            }
+
+
+            if (
+                !finalText
+            ) {
+
+                finalText =
+                    "أكملت التحليل، لكن لم أحصل على إجابة نصية نهائية من النموذج.";
+
+            }
+
+
+            /*
+            -------------------------------------------------
+            REFLECTION
+            -------------------------------------------------
+            */
+
+            state.self.cognitiveState =
+                "reflecting";
+
+
+            state.self.confidence =
+                clamp(
+                    state.self.confidence ||
+                    0.75
+                );
+
+
+            state.self.uncertainty =
+                1 -
+                state.self.confidence;
+
+
+            EventBus.emit(
+                "AGENT_REFLECTION",
+                {
+
+                    iteration:
+                        iteration,
+
+                    toolCalls:
+                        state.agent.toolCalls,
+
+                    webSearchUsed:
+                        state.agent
+                            .webSearchUsed,
+
+                    finalResponse:
+                        finalText
+
+                }
+            );
+
+
+            /*
+            -------------------------------------------------
+            LEARNING
+            -------------------------------------------------
+            */
+
+            LearningEngine.record(
+                {
+
+                    userMessage,
+
+                    goal:
+                        state.currentGoal,
+
+                    plan:
+                        state.currentPlan,
+
+                    toolCalls:
+                        state.agent.toolCalls,
+
+                    retries:
+                        state.agent.retries,
+
+                    webSearchUsed:
+                        state.agent
+                            .webSearchUsed,
+
+                    response:
+                        finalText
+
+                }
+            );
+
+
+            state.self.cognitiveState =
+                "idle";
+
+
+            saveState();
+
+
+            return finalText;
 
         }
 
 
-        case "status":
-
-            return [
-
-                "النظام يعمل.",
-
-                `الحالة: ${
-                    state.self.mode
-                }`,
-
-                `الثقة: ${
-                    Math.round(
-                        state.self.confidence *
-                        100
-                    )
-                }%`,
-
-                `عدم اليقين: ${
-                    Math.round(
-                        state.self.uncertainty *
-                        100
-                    )
-                }%`
-
-            ].join("\n");
+        state.self.cognitiveState =
+            "idle";
 
 
-        case "planning":
+        return (
+            "وصلت إلى الحد الآمن لدورات التفكير قبل أن أتمكن من إنهاء المهمة."
+        );
 
-            return (
+    }
 
-                "حللت الهدف وأنشأت مساحة تخطيط مناسبة. "
+};
 
-                +
 
-                "الخطة الحالية جاهزة للتعديل والتنفيذ."
+/* =========================================================
+   LEARNING ENGINE
+========================================================= */
 
+const LearningEngine = {
+
+    record(
+        episode
+    ) {
+
+        state.learning
+            .episodes
+            .push({
+
+                id:
+                    Date.now() +
+                    "_" +
+                    Math.random()
+                        .toString(36)
+                        .slice(2),
+
+                ...episode,
+
+                createdAt:
+                    Date.now()
+
+            });
+
+
+        state.learning
+            .episodes =
+            state.learning
+                .episodes
+                .slice(
+                    -100
+                );
+
+
+        saveState();
+
+
+        EventBus.emit(
+            "LEARNING_EPISODE_RECORDED",
+            {
+
+                goal:
+                    episode.goal?.title ||
+                    null,
+
+                toolCalls:
+                    episode.toolCalls,
+
+                retries:
+                    episode.retries
+
+            }
+        );
+
+    }
+
+};
+
+
+/* =========================================================
+   NATURAL RESPONSE / VOICE
+========================================================= */
+
+function speak(
+    text
+) {
+
+    if (
+        !window.speechSynthesis
+    ) {
+
+        return;
+
+    }
+
+
+    try {
+
+        window.speechSynthesis
+            .cancel();
+
+
+        const utterance =
+            new SpeechSynthesisUtterance(
+                text
             );
 
 
-        default:
+        utterance.lang =
+            "ar-EG";
 
-            return (
 
-                "فهمت الطلب، لكنني أحتاج إلى مزيد من السياق "
+        utterance.rate =
+            clamp(
+                state.personality
+                    .voiceRate,
 
-                +
+                0.5,
 
-                "لاتخاذ قرار موثوق."
-
+                2
             );
+
+
+        /*
+        نبرة طبيعية بدون محاولة تقليد
+        صوت شخصية حقيقية بعينها.
+        */
+
+        utterance.pitch =
+            1;
+
+
+        utterance.volume =
+            1;
+
+
+        window.speechSynthesis
+            .speak(
+                utterance
+            );
+
+    } catch (
+        error
+    ) {
+
+        console.warn(
+            "[TTS]",
+            error
+        );
 
     }
 
 }
 
 
-/* ========================================================
-   UI
-======================================================== */
+/* =========================================================
+   MESSAGE UI
+========================================================= */
 
 function addMessage(
     role,
@@ -1654,7 +4094,8 @@ function addMessage(
 
     wrapper.className =
         `message ${
-            role === "user"
+            role ===
+            "user"
                 ? "user"
                 : "jarvis"
         }`;
@@ -1671,7 +4112,8 @@ function addMessage(
 
 
     meta.textContent =
-        role === "user"
+        role ===
+        "user"
             ? "YOU"
             : "J.A.R.V.I.S";
 
@@ -1696,12 +4138,12 @@ function addMessage(
         wrapper
     );
 
-
-    box.scrollTop =
-        box.scrollHeight;
-
 }
 
+
+/* =========================================================
+   RENDER
+========================================================= */
 
 function renderMessages() {
 
@@ -1715,7 +4157,8 @@ function renderMessages() {
         return;
 
 
-    box.innerHTML = "";
+    box.innerHTML =
+        "";
 
 
     for (
@@ -1724,39 +4167,44 @@ function renderMessages() {
     ) {
 
         addMessage(
-            message.role,
+            message.role ===
+                "assistant"
+                ? "jarvis"
+                : "user",
+
             message.text
         );
 
     }
+
+
+    box.scrollTop =
+        box.scrollHeight;
 
 }
 
 
 function renderState() {
 
-    const s =
-        state.self;
-
-
     setText(
         "systemState",
-        state.system?.online !== false
-    ? "ONLINE"
-    : "OFFLINE"
+        state.system.online
+            ? "ONLINE"
+            : "OFFLINE"
     );
 
 
     setText(
         "processing",
-        s.mode
+        state.self.cognitiveState
     );
 
 
     setText(
         "confidence",
         `${Math.round(
-            s.confidence * 100
+            state.self.confidence *
+            100
         )}%`
     );
 
@@ -1764,7 +4212,8 @@ function renderState() {
     setText(
         "uncertainty",
         `${Math.round(
-            s.uncertainty * 100
+            state.self.uncertainty *
+            100
         )}%`
     );
 
@@ -1780,40 +4229,41 @@ function renderState() {
 
 function renderAnalysis() {
 
-    const a =
+    const analysis =
         state.lastAnalysis;
-
-
-    if (!a)
-        return;
 
 
     setText(
         "intent",
-        a.intent ||
-        "unknown"
+        analysis?.intent ||
+        "AI"
     );
 
 
     setText(
         "analysisGoal",
-        a.goal ||
+        analysis?.goal ||
+        state.currentGoal?.title ||
         "—"
     );
 
 
     setText(
         "memoryAction",
-        a.memoryAction ||
-        "none"
+        analysis?.memoryAction ||
+        "tool-driven"
     );
 
 
     setText(
         "urgency",
         `${Math.round(
-            (a.urgency || 0) *
-            100
+            (
+                analysis?.urgency ||
+                state.currentGoal
+                    ?.urgency ||
+                0
+            ) * 100
         )}%`
     );
 
@@ -1835,11 +4285,15 @@ function renderMemory() {
     const memories =
         MemoryEngine
             .all()
-            .slice(-10)
+            .slice(
+                -10
+            )
             .reverse();
 
 
-    if (!memories.length) {
+    if (
+        !memories.length
+    ) {
 
         box.textContent =
             "لا توجد ذكريات.";
@@ -1853,14 +4307,25 @@ function renderMemory() {
         memories
             .map(
                 memory =>
-                    `<div class="row">
-                        <span class="value"
-                              style="max-width:100%;text-align:right">
-                            ${escapeHTML(
+                    `
+                    <div class="row">
+
+                        <span
+                            class="value"
+                            style="
+                                max-width:100%;
+                                text-align:right
+                            "
+                        >
+
+                            ${escapeHtml(
                                 memory.text
                             )}
+
                         </span>
-                    </div>`
+
+                    </div>
+                    `
             )
             .join("");
 
@@ -1879,9 +4344,11 @@ function renderPlan() {
         return;
 
 
-    if (
-        !state.currentPlan
-    ) {
+    const plan =
+        state.currentPlan;
+
+
+    if (!plan) {
 
         box.textContent =
             "لا توجد خطة.";
@@ -1889,10 +4356,6 @@ function renderPlan() {
         return;
 
     }
-
-
-    const plan =
-        state.currentPlan;
 
 
     box.innerHTML = `
@@ -1904,7 +4367,7 @@ function renderPlan() {
             </span>
 
             <span class="value">
-                ${escapeHTML(
+                ${escapeHtml(
                     plan.goal
                 )}
             </span>
@@ -1915,12 +4378,13 @@ function renderPlan() {
         <div class="row">
 
             <span class="label">
-                المختارة
+                الاستراتيجية
             </span>
 
             <span class="value">
-                ${escapeHTML(
-                    plan.selected.name
+                ${escapeHtml(
+                    plan.selectedStrategy ||
+                    "AI selected"
                 )}
             </span>
 
@@ -1934,12 +4398,45 @@ function renderPlan() {
             </span>
 
             <span class="value">
-                ${escapeHTML(
+                ${escapeHtml(
                     plan.status
                 )}
             </span>
 
         </div>
+
+
+        ${
+            Array.isArray(
+                plan.steps
+            )
+
+                ? plan.steps
+                    .map(
+                        (
+                            step,
+                            index
+                        ) =>
+                            `
+                            <div class="row">
+
+                                <span class="label">
+                                    ${index + 1}
+                                </span>
+
+                                <span class="value">
+                                    ${escapeHtml(
+                                        step
+                                    )}
+                                </span>
+
+                            </div>
+                            `
+                    )
+                    .join("")
+
+                : ""
+        }
 
     `;
 
@@ -1960,7 +4457,10 @@ function renderEventLog() {
 
     box.textContent =
         state.events
-            .slice(0, 40)
+            .slice(
+                0,
+                40
+            )
             .map(
                 event =>
                     `${new Date(
@@ -1969,7 +4469,9 @@ function renderEventLog() {
                         "ar-EG"
                     )} | ${event.type}`
             )
-            .join("\n");
+            .join(
+                "\n"
+            );
 
 }
 
@@ -2012,40 +4514,181 @@ function setText(
 }
 
 
-function escapeHTML(
-    text
-) {
+/* =========================================================
+   USER MESSAGE PIPELINE
+========================================================= */
 
-    return String(
-        text ?? ""
-    ).replace(
-        /[&<>"']/g,
-        char =>
-            ({
-                "&":
-                    "&amp;",
+let sending =
+    false;
 
-                "<":
-                    "&lt;",
 
-                ">":
-                    "&gt;",
+async function handleUserMessage() {
 
-                '"':
-                    "&quot;",
+    if (
+        sending
+    ) {
 
-                "'":
-                    "&#039;"
+        return;
 
-            })[char]
+    }
+
+
+    const input =
+        document.getElementById(
+            "userInput"
+        );
+
+
+    const button =
+        document.getElementById(
+            "sendButton"
+        );
+
+
+    if (!input)
+        return;
+
+
+    const text =
+        input.value.trim();
+
+
+    if (!text)
+        return;
+
+
+    sending =
+        true;
+
+
+    if (button) {
+
+        button.disabled =
+            true;
+
+    }
+
+
+    /*
+    Add to conversation immediately.
+    */
+
+    Conversation.addUser(
+        text
     );
+
+
+    input.value =
+        "";
+
+
+    renderAll();
+
+
+    try {
+
+        const response =
+            await Agent.run(
+                text
+            );
+
+
+        /*
+        Store ONLY once.
+        */
+
+        Conversation.addJarvis(
+            response
+        );
+
+
+        renderAll();
+
+
+        speak(
+            response
+        );
+
+
+    } catch (
+        error
+    ) {
+
+        console.error(
+            "[JARVIS AGENT ERROR]",
+            error
+        );
+
+
+        state.self.cognitiveState =
+            "error";
+
+
+        state.self.confidence =
+            0.05;
+
+
+        state.self.uncertainty =
+            0.95;
+
+
+        const errorMessage =
+            `حدث خطأ في النواة: ${
+                error.message
+            }`;
+
+
+        Conversation.addJarvis(
+            errorMessage
+        );
+
+
+        EventBus.emit(
+            "AGENT_ERROR",
+            {
+                message:
+                    error.message
+            }
+        );
+
+
+        renderAll();
+
+
+    } finally {
+
+        sending =
+            false;
+
+
+        state.self.cognitiveState =
+            "idle";
+
+
+        if (button) {
+
+            button.disabled =
+                false;
+
+        }
+
+
+        renderAll();
+
+
+        input.focus();
+
+
+        saveState();
+
+    }
 
 }
 
 
-/* ========================================================
-   MAIN UI BOOT
-======================================================== */
+/* =========================================================
+   STARTUP
+========================================================= */
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -2063,178 +4706,67 @@ document.addEventListener(
             );
 
 
-        const button =
-            document.getElementById(
-                "sendButton"
+        if (
+            !form ||
+            !input
+        ) {
+
+            console.error(
+                "JARVIS: Required UI elements are missing."
             );
 
+            return;
 
-        if (!state.conversation.length) {
-    addMessage(
-        "jarvis",
-        "صباح الخير يا سيدي. النواة المعرفية جاهزة، والموديل هو طبقة فهم اللغة واتخاذ القرار."
-    );
-}
-
-try {
-    renderAll();
-} catch (error) {
-    console.error("[JARVIS UI ERROR]", error);
-}
+        }
 
 
         form.addEventListener(
             "submit",
-            async event => {
+            event => {
 
                 event.preventDefault();
 
-
-                const text =
-                    input.value.trim();
-
-
-                if (!text)
-                    return;
-
-
-                if (button)
-                    button.disabled =
-                        true;
-
-
-                input.value = "";
-
-
-                /*
-                USER MESSAGE
-                */
-
-                addMessage(
-                    "user",
-                    text
-                );
-
-
-                state.conversation.push({
-
-                    role:
-                        "user",
-
-                    text,
-
-                    timestamp:
-                        Date.now()
-
-                });
-
-
-                saveState();
-
-
-                try {
-
-                    const response =
-                        await CognitiveCore
-                            .process(
-                                text
-                            );
-
-
-                    /*
-                    Avoid double adding
-                    because CognitiveCore
-                    stores the response.
-                    */
-
-                    addMessage(
-                        "jarvis",
-                        response
-                    );
-
-
-                    state.conversation.push({
-
-                        role:
-                            "jarvis",
-
-                        text:
-                            response,
-
-                        timestamp:
-                            Date.now()
-
-                    });
-
-
-                    saveState();
-
-
-                } catch (error) {
-
-                    console.error(
-                        "[JARVIS ERROR]",
-                        error
-                    );
-
-
-                    state.self.mode =
-                        "error";
-
-
-                    state.self.confidence =
-                        .05;
-
-
-                    state.self.uncertainty =
-                        .95;
-
-
-                    addMessage(
-                        "jarvis",
-                        `حدث خطأ في محرك الذكاء الاصطناعي:\n${error.message}`
-                    );
-
-                } finally {
-
-                    state.self.mode =
-                        "idle";
-
-
-                    if (button)
-                        button.disabled =
-                            false;
-
-
-                    renderAll();
-
-
-                    input.focus();
-
-                }
+                void
+                    handleUserMessage();
 
             }
         );
 
 
-        try {
-    renderAll();
-} catch (error) {
-    console.error("[JARVIS UI ERROR]", error);
-}
+        renderAll();
 
-logEvent("BOOT");
+
+        if (
+            !state.conversation.length
+        ) {
+
+            Conversation.addJarvis(
+
+                "صباح الخير يا سيدي. النواة الوكيلة جاهزة. أنا الآن أستطيع الفهم، استخدام الأدوات، الملاحظة، إعادة التخطيط، والتعلم من نتائج المهام."
+
+            );
+
+        }
+
+
+        renderAll();
+
+
+        input.focus();
+
+
+        EventBus.emit(
+            "SYSTEM_BOOT",
+            {
+
+                version:
+                    state.system.version,
+
+                model:
+                    state.system.model
+
+            }
+        );
 
     }
 );
-
-
-function logEvent(
-    type
-) {
-
-    EventBus.emit(
-        type
-    );
-
-}
