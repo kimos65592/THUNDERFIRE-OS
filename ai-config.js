@@ -5,21 +5,11 @@
 J.A.R.V.I.S AI CONFIGURATION
 =========================================================
 
-مهم:
+Groq + GPT-OSS-20B
 
-الكود يدعم أي API متوافق مع OpenAI Chat Completions.
-
-لا تضع مفتاح API في مستودع GitHub عام.
-
-للاختبار المحلي يمكنك وضع المفتاح هنا مؤقتًا.
-
-الأفضل لاحقًا:
-Web
- ↓
-Your backend
- ↓
-AI provider
-
+تحذير:
+لا ترفع apiKey الحقيقي إلى GitHub.
+هذا مناسب للاختبار المحلي فقط.
 =========================================================
 */
 
@@ -37,9 +27,58 @@ window.JARVIS_AI_CONFIG = {
         "openai/gpt-oss-20b",
 
     temperature:
-        0.25,
+        0.35,
 
     maxTokens:
-        1200
+        1600,
+
+    reasoningEffort:
+        "medium",
+
+    /*
+    Groq built-in browser_search
+    هو خط البحث الأساسي داخل الموديل.
+    */
+
+    browserSearch:
+        true,
+
+    /*
+    Fallback احتياطي من جهة التطبيق.
+    
+    لو الموديل لم يستخدم البحث في موقف
+    يبدو أنه يحتاج معلومات خارجية،
+    JARVIS يجرب هذا المسار.
+    */
+
+    fallbackWebSearch:
+        true,
+
+    /*
+    يمكن لاحقًا وضع Proxy/Search API هنا.
+    
+    مثال:
+    https://your-backend.example/search
+
+    لو فارغ يستخدم DuckDuckGo Instant Answer
+    كـ fallback best-effort.
+    */
+
+    fallbackSearchEndpoint:
+        "",
+
+    /*
+    عدد دورات الـAgent القصوى.
+    */
+
+    maxAgentIterations:
+        6,
+
+    /*
+    أقصى محاولات إعادة تنفيذ Tool فاشلة.
+    */
+
+    maxRetries:
+        2
 
 };
