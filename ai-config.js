@@ -5,7 +5,7 @@
 J.A.R.V.I.S AI CONFIGURATION
 =========================================================
 
-Groq + GPT-OSS-20B
+Groq + GPT-OSS-120B
 
 تحذير:
 لا ترفع apiKey الحقيقي إلى GitHub.
@@ -24,13 +24,13 @@ window.JARVIS_AI_CONFIG = {
         "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",
 
     model:
-        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
 
     temperature:
-        0.35,
+        0.25,
 
     maxTokens:
-        1600,
+        1200,
 
     reasoningEffort:
         "medium",
