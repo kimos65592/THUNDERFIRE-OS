@@ -1,1013 +1,632 @@
+
+/* ============================================================
+   J.A.R.V.I.S — COGNITIVE OS
+   Gemini Native + Memory + Goals + Planning + Tasks
+   Function Calling + Google Search + Reflection/Learning
+============================================================ */
+
 "use strict";
 
-/*
-=============================================================
- J.A.R.V.I.S — AGENT CORE V2
-=============================================================
+const CONFIG = window.JARVIS_AI_CONFIG || {};
 
- USER
-   ↓
- AI UNDERSTANDING
-   ↓
- WORLD MODEL
-   ↓
- MEMORY
-   ↓
- GOALS
-   ↓
- PLANNING
-   ↓
- DECISION
-   ↓
- TOOL CALL
-   ↓
- EXECUTE
-   ↓
- OBSERVE
-   ↓
- AI REFLECTION
-   ↓
- RETRY / REPLAN
-   ↓
- LEARN
-   ↓
- FINAL RESPONSE
-
-=============================================================
-
-IMPORTANT:
-
-The model is responsible for understanding and deciding.
-
-JavaScript is responsible for:
-- state
-- persistence
-- tools
-- validation
-- execution
-- observation
-- safety boundaries
-
-=============================================================
-*/
-
-
-/* =========================================================
-   CONFIG
-========================================================= */
-
-const AI_CONFIG = {
-    enabled: true,
-    provider: "gemini-server",
-    model: "gemini-3.7-flash",
-    maxAgentIterations: 6,
-    maxRetries: 2,
-    fallbackWebSearch: true,
-    fallbackSearchEndpoint: ""
-};
-
-
-/* =========================================================
-   DEFAULT STATE
-========================================================= */
+const STORAGE_KEY = "JARVIS_COGNITIVE_OS_STATIC_V3";
 
 const DEFAULT_STATE = {
-
-    system: {
-
-        online:
-            true,
-
-        environment:
-            "web",
-
-        version:
-            "AGENT-V2",
-
-        cognitiveState:
-            "idle",
-
-        model:
-            AI_CONFIG.model
-
-    },
-
     conversation: [],
-
     memories: [],
-
     goals: [],
-
     tasks: [],
 
-    currentGoal:
-        null,
-
-    currentPlan:
-        null,
-
-    currentTask:
-        null,
-
-    lastAnalysis:
-        null,
-
-    self: {
-
-        confidence:
-            0.5,
-
-        uncertainty:
-            0.5,
-
-        attention:
-            0.85,
-
-        awareness:
-            0.80,
-
-        emotionEstimate:
-            "neutral"
-
-    },
+    currentGoal: null,
+    currentPlan: null,
+    currentTask: null,
 
     personality: {
+        addressStyle: "يا سيدي",
+        tone: "calm",
+        concise: true,
+        formality: 65,
+        humor: 25,
+        proactivity: true,
+        explanationStyle: "natural",
+        voiceRate: 0.95
+    },
 
-        address:
-            "يا سيدي",
+    behavior: {
+        rules: [],
+        preferences: []
+    },
 
-        tone:
-            "calm",
+    self: {
+        mode: "OBSERVING",
+        awareness: 0.82,
+        attention: 0.86,
+        confidence: 0.80,
+        uncertainty: 0.20,
+        currentThought: "في انتظار الإدراك...",
+        currentAction: "لا يوجد",
+        lastObservation: "لا يوجد"
+    },
 
-        concise:
-            false,
+    world: {
+        environment: "web",
+        online: navigator.onLine,
 
-        formal:
-            0.65,
+        capabilities: [
+            "text_input",
+            "voice_output",
+            "persistent_memory",
+            "goal_management",
+            "planning",
+            "tool_use",
+            "google_search",
+            "reflection",
+            "learning"
+        ],
 
-        humor:
-            0.25,
-
-        proactive:
-            true,
-
-        warmth:
-            0.75,
-
-        voiceRate:
-            0.95
-
+        limitations: [
+            "no_android_control",
+            "no_microphone",
+            "no_background_service",
+            "no_direct_phone_control"
+        ]
     },
 
     agent: {
-
-        iteration:
-            0,
-
-        toolCalls:
-            0,
-
-        retries:
-            0,
-
-        lastTool:
-            null,
-
-        lastToolResult:
-            null,
-
-        webSearchUsed:
-            false,
-
-        cycleStartedAt:
-            null
-
+        iteration: 0,
+        toolCalls: 0,
+        retries: 0,
+        lastTool: null,
+        lastToolResult: null,
+        webSearchUsed: false,
+        cycleStartedAt: null
     },
 
-    learning: {
-
-        episodes:
-            []
-
-    },
-
+    learning: [],
     events: []
 };
 
 
-/* =========================================================
-   STORAGE
-========================================================= */
+/* ============================================================
+   HELPERS
+============================================================ */
 
-const STORAGE_KEY =
-    "JARVIS_AGENT_CORE_V2";
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
 
-
-function deepMerge(
-    target,
-    source
-) {
-
-    if (
-        !source ||
-        typeof source !== "object"
-    ) {
-
+function deepMerge(target, source) {
+    if (!source || typeof source !== "object") {
         return target;
-
     }
 
-
-    for (
-        const key
-        of Object.keys(source)
-    ) {
-
-        const value =
-            source[key];
-
+    for (const key of Object.keys(source)) {
+        const value = source[key];
 
         if (
             value &&
-            typeof value ===
-                "object" &&
+            typeof value === "object" &&
             !Array.isArray(value)
         ) {
-
-            target[key] =
-                deepMerge(
-                    target[key] || {},
-                    value
-                );
-
+            target[key] = deepMerge(
+                target[key] || {},
+                value
+            );
         } else {
-
-            target[key] =
-                value;
-
+            target[key] = value;
         }
-
     }
 
-
     return target;
-
 }
 
-
 function loadState() {
-
     try {
-
         const raw =
             localStorage.getItem(
                 STORAGE_KEY
             );
 
-
         if (!raw) {
-
-            return structuredClone(
+            return clone(
                 DEFAULT_STATE
             );
-
         }
 
-
-        const saved =
-            JSON.parse(
-                raw
-            );
-
-
         return deepMerge(
-            structuredClone(
-                DEFAULT_STATE
-            ),
-            saved
+            clone(DEFAULT_STATE),
+            JSON.parse(raw)
         );
 
-    } catch (
-        error
-    ) {
-
-        console.error(
-            "[STATE LOAD]",
+    } catch (error) {
+        console.warn(
+            "[JARVIS] State load failed:",
             error
         );
 
-
-        return structuredClone(
+        return clone(
             DEFAULT_STATE
         );
-
     }
-
 }
 
-
-const state =
-    loadState();
-
+const state = loadState();
 
 function saveState() {
-
     try {
-
         localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify(
-                state
-            )
+            JSON.stringify(state)
         );
-
-    } catch (
-        error
-    ) {
-
-        console.error(
-            "[STATE SAVE]",
+    } catch (error) {
+        console.warn(
+            "[JARVIS] State save failed:",
             error
         );
-
     }
-
 }
 
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function normalizeArabic(
-    text
-) {
-
-    return String(
-        text || ""
-    )
-
+function normalizeArabic(text) {
+    return String(text || "")
         .toLowerCase()
-
-        .replace(
-            /[إأآ]/g,
-            "ا"
-        )
-
-        .replace(
-            /ة/g,
-            "ه"
-        )
-
-        .replace(
-            /ى/g,
-            "ي"
-        )
-
-        .replace(
-            /[ًٌٍَُِّْـ]/g,
-            ""
-        )
-
+        .replace(/[إأآ]/g, "ا")
+        .replace(/ة/g, "ه")
+        .replace(/ى/g, "ي")
+        .replace(/[ًٌٍَُِّْـ]/g, "")
         .replace(
             /[^\p{L}\p{N}\s]/gu,
             " "
         )
-
-        .replace(
-            /\s+/g,
-            " "
-        )
-
+        .replace(/\s+/g, " ")
         .trim();
-
 }
 
-
-function clamp(
-    value,
-    min = 0,
-    max = 1
-) {
-
+function clamp01(value) {
     return Math.max(
-        min,
+        0,
         Math.min(
-            max,
-            Number(
-                value
-            ) || 0
+            1,
+            Number(value) || 0
         )
     );
-
 }
 
+function clamp100(value) {
+    return Math.max(
+        0,
+        Math.min(
+            100,
+            Number(value) || 0
+        )
+    );
+}
 
-function safeJson(
-    value
-) {
-
+function safeString(value) {
     try {
-
-        return JSON.stringify(
-            value,
-            null,
-            2
-        );
-
-    } catch {
-
         return String(
+            value ?? ""
+        );
+    } catch {
+        return "";
+    }
+}
+
+function safeJson(value) {
+    try {
+        return JSON.stringify(
             value
         );
-
-    }
-
-}
-
-
-function escapeHtml(
-    text
-) {
-
-    return String(
-        text ?? ""
-    )
-        .replace(
-            /[&<>"']/g,
-            char =>
-                ({
-                    "&":
-                        "&amp;",
-
-                    "<":
-                        "&lt;",
-
-                    ">":
-                        "&gt;",
-
-                    '"':
-                        "&quot;",
-
-                    "'":
-                        "&#039;"
-                }[char])
-        );
-
-}
-
-
-/* =========================================================
-   EVENT BUS
-========================================================= */
-
-const EventBus = {
-
-    emit(
-        type,
-        data = {}
-    ) {
-
-        state.events.unshift({
-
-            type,
-
-            data,
-
-            timestamp:
-                Date.now()
-
+    } catch {
+        return JSON.stringify({
+            error:
+                "unserializable_result"
         });
+    }
+}
 
+function escapeHtml(text) {
+    return safeString(text).replace(
+        /[&<>"']/g,
+        ch =>
+            ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;"
+            }[ch])
+    );
+}
 
-        state.events =
-            state.events.slice(
-                0,
-                150
-            );
+function setText(id, value) {
+    const node =
+        document.getElementById(id);
 
+    if (node) {
+        node.textContent =
+            value;
+    }
+}
 
-        console.log(
-            `[EVENT] ${type}`,
-            data
+function emit(
+    type,
+    data = {}
+) {
+    state.events.unshift({
+        type,
+        data,
+        timestamp: Date.now()
+    });
+
+    state.events =
+        state.events.slice(
+            0,
+            80
         );
 
+    saveState();
 
-        renderEventLog();
+    console.log(
+        `[JARVIS:${type}]`,
+        data
+    );
 
-    }
+    renderAll();
+}
 
-};
 
-
-/* =========================================================
+/* ============================================================
    CONVERSATION
-========================================================= */
+============================================================ */
 
 const Conversation = {
 
-    addUser(
-        text
-    ) {
+    addUser(text) {
 
         state.conversation.push({
-
-            role:
-                "user",
-
-            text,
-
+            role: "user",
+            text:
+                safeString(text),
             timestamp:
                 Date.now()
-
         });
-
 
         state.conversation =
             state.conversation.slice(
-                -100
+                -40
             );
 
-
         saveState();
-
     },
 
-
-    addJarvis(
-        text
-    ) {
+    addAssistant(text) {
 
         state.conversation.push({
-
-            role:
-                "assistant",
-
-            text,
-
+            role: "assistant",
+            text:
+                safeString(text),
             timestamp:
                 Date.now()
-
         });
-
 
         state.conversation =
             state.conversation.slice(
-                -100
+                -40
             );
-
 
         saveState();
-
     },
 
-
-    recent(
-        count = 16
-    ) {
-
-        return state.conversation
-            .slice(
-                -count
-            );
-
-    },
-
-
-    context(
-        count = 16
-    ) {
-
-        return this
-            .recent(
-                count
-            )
-            .map(
-                message =>
-                    `${
-                        message.role ===
-                        "user"
-                            ? "USER"
-                            : "JARVIS"
-                    }: ${message.text}`
-            )
-            .join("\n");
-
+    recent(count = 12) {
+        return state.conversation.slice(
+            -count
+        );
     }
-
 };
 
 
-/* =========================================================
+/* ============================================================
    MEMORY ENGINE
-========================================================= */
+============================================================ */
 
-const MemoryEngine = {
+const Memory = {
 
     save(
         text,
-        category =
-            "user_fact"
+        category = "user_fact"
     ) {
 
-        const clean =
-            String(
-                text || ""
-            ).trim();
+        const value =
+            safeString(text).trim();
 
-
-        if (!clean) {
-
+        if (!value) {
             return {
-
-                success:
-                    false,
-
-                message:
+                success: false,
+                error:
                     "Empty memory."
-
             };
-
         }
-
 
         const normalized =
             normalizeArabic(
-                clean
+                value
             );
-
 
         const exists =
             state.memories.some(
                 memory =>
                     normalizeArabic(
                         memory.text
-                    ) ===
-                    normalized
+                    ) === normalized
             );
-
 
         if (!exists) {
 
             state.memories.push({
 
                 id:
-                    Date.now() +
-                    "_" +
-                    Math.random()
-                        .toString(36)
-                        .slice(2),
+                    crypto.randomUUID
+                        ? crypto.randomUUID()
+                        : `${Date.now()}_${Math.random()}`,
 
-                text:
-                    clean,
+                text: value,
 
-                category,
+                category:
+                    safeString(
+                        category
+                    ),
 
                 createdAt:
                     Date.now(),
 
-                accessCount:
-                    0,
+                lastUsed: null,
 
-                lastAccess:
-                    null
-
+                accessCount: 0
             });
-
         }
-
 
         saveState();
 
-
-        EventBus.emit(
-            "MEMORY_SAVE",
+        emit(
+            "MEMORY_SAVED",
             {
-                text:
-                    clean,
-
+                text: value,
                 category
             }
         );
 
-
-        renderMemory();
-
-
         return {
-
-            success:
-                true,
-
-            message:
-                "Memory saved."
-
+            success: true,
+            stored: value
         };
-
     },
 
 
-    all() {
-
-        return [
-            ...state.memories
-        ];
-
-    },
-
-
-    search(
-        query = ""
-    ) {
-
-        const memories =
-            this.all();
-
-
-        if (
-            !query.trim()
-        ) {
-
-            return memories
-                .slice(
-                    -20
-                )
-                .reverse();
-
-        }
-
-
-        const words =
-            normalizeArabic(
-                query
-            )
-                .split(" ")
-                .filter(
-                    Boolean
-                );
-
-
-        return memories
-
-            .map(
-                memory => {
-
-                    const content =
-                        normalizeArabic(
-                            memory.text
-                        );
-
-
-                    let score =
-                        0;
-
-
-                    for (
-                        const word
-                        of words
-                    ) {
-
-                        if (
-                            word.length >
-                            1 &&
-                            content.includes(
-                                word
-                            )
-                        ) {
-
-                            score++;
-
-                        }
-
-                    }
-
-
-                    return {
-
-                        ...memory,
-
-                        score
-
-                    };
-
-                }
-            )
-
-            .sort(
-                (a, b) =>
-                    b.score -
-                    a.score
-            )
-
-            .slice(
-                0,
-                10
-            );
-
-    },
-
-
-    recall(
-        query
-    ) {
-
-        const results =
-            this.search(
-                query
-            );
-
-
-        for (
-            const item
-            of results
-        ) {
-
-            const memory =
-                state.memories.find(
-                    m =>
-                        m.id ===
-                        item.id
-                );
-
-
-            if (memory) {
-
-                memory.accessCount++;
-
-                memory.lastAccess =
-                    Date.now();
-
-            }
-
-        }
-
-
-        saveState();
-
-
-        return results;
-
-    },
-
-
-    forget(
-        query
-    ) {
+    search(query = "") {
 
         const q =
             normalizeArabic(
                 query
             );
 
+        const list =
+            state.memories.map(
+                item => {
 
-        if (!q) {
+                    const normalized =
+                        normalizeArabic(
+                            item.text
+                        );
 
-            return {
+                    if (!q) {
+                        return {
+                            ...item,
+                            score: 1
+                        };
+                    }
 
-                success:
-                    false,
+                    const words =
+                        q
+                            .split(" ")
+                            .filter(Boolean);
 
-                removed:
-                    0
+                    const score =
+                        words.reduce(
+                            (
+                                total,
+                                word
+                            ) =>
+                                normalized.includes(
+                                    word
+                                )
+                                    ? total + 1
+                                    : total,
+                            0
+                        );
 
-            };
+                    return {
+                        ...item,
+                        score
+                    };
+                }
+            );
 
+        const results =
+            list
+                .filter(
+                    item =>
+                        !q ||
+                        item.score > 0
+                )
+                .sort(
+                    (a, b) =>
+                        b.score -
+                        a.score
+                )
+                .slice(0, 10);
+
+        for (
+            const item of results
+        ) {
+
+            const original =
+                state.memories.find(
+                    memory =>
+                        memory.id ===
+                        item.id
+                );
+
+            if (original) {
+
+                original.lastUsed =
+                    Date.now();
+
+                original.accessCount++;
+            }
         }
 
+        saveState();
+
+        return {
+            success: true,
+            results
+        };
+    },
+
+
+    forget(query) {
+
+        const q =
+            normalizeArabic(
+                query
+            );
+
+        if (!q) {
+            return {
+                success: false,
+                removed: 0
+            };
+        }
 
         const before =
             state.memories.length;
-
 
         state.memories =
             state.memories.filter(
                 memory =>
                     !normalizeArabic(
                         memory.text
-                    ).includes(
-                        q
-                    )
+                    ).includes(q)
             );
-
 
         const removed =
             before -
             state.memories.length;
 
-
         saveState();
 
-
-        EventBus.emit(
-            "MEMORY_FORGET",
+        emit(
+            "MEMORY_FORGOTTEN",
             {
                 query,
                 removed
             }
         );
 
-
-        renderMemory();
-
-
         return {
-
-            success:
-                true,
-
+            success: true,
             removed
-
         };
-
     }
-
 };
 
 
-/* =========================================================
+/* ============================================================
    GOAL ENGINE
-========================================================= */
+============================================================ */
 
-const GoalEngine = {
+const Goals = {
 
     create(
         title,
-        meta = {}
+        constraints = [],
+        preferences = [],
+        urgency = 0
     ) {
 
         const goal = {
 
             id:
-                Date.now() +
-                "_" +
-                Math.random()
-                    .toString(36)
-                    .slice(2),
+                crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${Date.now()}_${Math.random()}`,
 
             title:
-                String(
+                safeString(
                     title
                 ).trim(),
 
-            status:
-                "active",
-
-            urgency:
-                clamp(
-                    meta.urgency ||
-                    0
-                ),
-
             constraints:
                 Array.isArray(
-                    meta.constraints
+                    constraints
                 )
-                    ? meta.constraints
+                    ? constraints.map(
+                        safeString
+                    )
                     : [],
 
             preferences:
                 Array.isArray(
-                    meta.preferences
+                    preferences
                 )
-                    ? meta.preferences
+                    ? preferences.map(
+                        safeString
+                    )
                     : [],
+
+            urgency:
+                clamp100(
+                    urgency
+                ),
+
+            status:
+                "active",
 
             createdAt:
                 Date.now(),
 
             updatedAt:
                 Date.now()
-
         };
-
 
         state.goals.push(
             goal
         );
 
-
         state.currentGoal =
             goal;
 
-
         saveState();
 
-
-        EventBus.emit(
+        emit(
             "GOAL_CREATED",
             goal
         );
 
-
-        return goal;
-
+        return {
+            success: true,
+            goal
+        };
     },
 
 
-    getCurrent() {
+    get() {
 
-        return state.currentGoal;
-
+        return {
+            success: true,
+            goal:
+                state.currentGoal
+        };
     },
 
 
@@ -1020,47 +639,79 @@ const GoalEngine = {
         ) {
 
             return {
-
-                success:
-                    false,
-
-                message:
+                success: false,
+                error:
                     "No active goal."
-
             };
-
         }
 
+        const patch =
+            {
+                ...changes
+            };
+
+        if (
+            patch.constraints &&
+            !Array.isArray(
+                patch.constraints
+            )
+        ) {
+
+            patch.constraints =
+                [
+                    String(
+                        patch.constraints
+                    )
+                ];
+        }
+
+        if (
+            patch.preferences &&
+            !Array.isArray(
+                patch.preferences
+            )
+        ) {
+
+            patch.preferences =
+                [
+                    String(
+                        patch.preferences
+                    )
+                ];
+        }
+
+        if (
+            patch.urgency !==
+            undefined
+        ) {
+
+            patch.urgency =
+                clamp100(
+                    patch.urgency
+                );
+        }
 
         Object.assign(
             state.currentGoal,
-            changes,
+            patch,
             {
                 updatedAt:
                     Date.now()
             }
         );
 
-
         saveState();
 
-
-        EventBus.emit(
+        emit(
             "GOAL_UPDATED",
-            changes
+            patch
         );
 
-
         return {
-
-            success:
-                true,
-
+            success: true,
             goal:
                 state.currentGoal
-
         };
-
     },
 
 
@@ -1071,434 +722,102 @@ const GoalEngine = {
         ) {
 
             return {
-
-                success:
-                    false
-
+                success: false,
+                error:
+                    "No active goal."
             };
-
         }
-
 
         state.currentGoal.status =
             "completed";
 
-
         state.currentGoal.updatedAt =
             Date.now();
 
-
         saveState();
 
-
-        EventBus.emit(
+        emit(
             "GOAL_COMPLETED",
             state.currentGoal
         );
 
-
         return {
-
-            success:
-                true,
-
+            success: true,
             goal:
                 state.currentGoal
-
         };
-
     }
-
 };
 
 
-/* =========================================================
-   TASK ENGINE
-========================================================= */
-
-const TaskEngine = {
-
-    create(
-        title,
-        goalId = null
-    ) {
-
-        const task = {
-
-            id:
-                Date.now() +
-                "_" +
-                Math.random()
-                    .toString(36)
-                    .slice(2),
-
-            title:
-
-                String(
-                    title
-                ).trim(),
-
-            goalId:
-                goalId ||
-                state.currentGoal?.id ||
-                null,
-
-            status:
-                "pending",
-
-            attempts:
-                0,
-
-            createdAt:
-                Date.now(),
-
-            updatedAt:
-                Date.now()
-
-        };
-
-
-        state.tasks.push(
-            task
-        );
-
-
-        saveState();
-
-
-        EventBus.emit(
-            "TASK_CREATED",
-            task
-        );
-
-
-        return task;
-
-    },
-
-
-    start(
-        id
-    ) {
-
-        const task =
-            state.tasks.find(
-                item =>
-                    item.id === id
-            );
-
-
-        if (!task) {
-
-            return {
-
-                success:
-                    false,
-
-                message:
-                    "Task not found."
-
-            };
-
-        }
-
-
-        task.status =
-            "running";
-
-
-        task.attempts++;
-
-
-        task.updatedAt =
-            Date.now();
-
-
-        state.currentTask =
-            task;
-
-
-        saveState();
-
-
-        EventBus.emit(
-            "TASK_STARTED",
-            task
-        );
-
-
-        return {
-
-            success:
-                true,
-
-            task
-
-        };
-
-    },
-
-
-    complete(
-        id,
-        result = null
-    ) {
-
-        const task =
-            state.tasks.find(
-                item =>
-                    item.id === id
-            );
-
-
-        if (!task) {
-
-            return {
-
-                success:
-                    false
-
-            };
-
-        }
-
-
-        task.status =
-            "completed";
-
-
-        task.result =
-            result;
-
-
-        task.completedAt =
-            Date.now();
-
-
-        task.updatedAt =
-            Date.now();
-
-
-        if (
-            state.currentTask?.id ===
-            id
-        ) {
-
-            state.currentTask =
-                null;
-
-        }
-
-
-        saveState();
-
-
-        EventBus.emit(
-            "TASK_COMPLETED",
-            task
-        );
-
-
-        return {
-
-            success:
-                true,
-
-            task
-
-        };
-
-    },
-
-
-    fail(
-        id,
-        reason
-    ) {
-
-        const task =
-            state.tasks.find(
-                item =>
-                    item.id === id
-            );
-
-
-        if (!task) {
-
-            return {
-
-                success:
-                    false
-
-            };
-
-        }
-
-
-        task.status =
-            "failed";
-
-
-        task.failure =
-            String(
-                reason ||
-                "Unknown failure."
-            );
-
-
-        task.updatedAt =
-            Date.now();
-
-
-        saveState();
-
-
-        EventBus.emit(
-            "TASK_FAILED",
-            task
-        );
-
-
-        return {
-
-            success:
-                true,
-
-            task
-
-        };
-
-    },
-
-
-    retry(
-        id
-    ) {
-
-        const task =
-            state.tasks.find(
-                item =>
-                    item.id === id
-            );
-
-
-        if (!task) {
-
-            return {
-
-                success:
-                    false
-
-            };
-
-        }
-
-
-        if (
-            task.attempts >=
-            AI_CONFIG.maxRetries
-        ) {
-
-            return {
-
-                success:
-                    false,
-
-                message:
-                    "Maximum retry limit reached."
-
-            };
-
-        }
-
-
-        task.status =
-            "pending";
-
-
-        task.attempts++;
-
-
-        task.updatedAt =
-            Date.now();
-
-
-        state.agent.retries++;
-
-
-        saveState();
-
-
-        EventBus.emit(
-            "TASK_RETRY",
-            task
-        );
-
-
-        return {
-
-            success:
-                true,
-
-            task
-
-        };
-
-    },
-
-
-    current() {
-
-        return state.currentTask;
-
-    }
-
-};
-
-
-/* =========================================================
-   PLAN ENGINE
-========================================================= */
-
-const PlanEngine = {
+/* ============================================================
+   PLANNER
+============================================================ */
+
+const Plans = {
 
     create(
         goal,
-        options = {}
+        steps = [],
+        strategy = "",
+        rationale = ""
     ) {
 
-        const plan = {
+        const cleanSteps =
+            Array.isArray(
+                steps
+            )
+                ? steps.map(
+                    safeString
+                )
+                : [
+                    safeString(
+                        steps
+                    )
+                ];
+
+        state.currentPlan = {
 
             id:
-                Date.now() +
-                "_" +
-                Math.random()
-                    .toString(36)
-                    .slice(2),
+                crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${Date.now()}_${Math.random()}`,
 
-            goal,
+            goal:
+                safeString(goal),
+
+            strategy:
+                safeString(
+                    strategy
+                ),
 
             rationale:
-                options.rationale ||
-                "",
+                safeString(
+                    rationale
+                ),
+
+            alternatives: [],
 
             steps:
-                Array.isArray(
-                    options.steps
-                )
-                    ? options.steps
-                    : [],
+                cleanSteps.map(
+                    (
+                        title,
+                        index
+                    ) => ({
 
-            alternatives:
-                Array.isArray(
-                    options.alternatives
-                )
-                    ? options.alternatives
-                    : [],
+                        id:
+                            `step_${index + 1}`,
 
-            selectedStrategy:
-                options.selectedStrategy ||
-                null,
+                        title,
+
+                        status:
+                            index === 0
+                                ? "in_progress"
+                                : "pending"
+                    })
+                ),
+
+            activeStepIndex: 0,
 
             status:
                 "ready",
@@ -1508,40 +827,35 @@ const PlanEngine = {
 
             updatedAt:
                 Date.now()
-
         };
-
-
-        state.currentPlan =
-            plan;
-
 
         saveState();
 
-
-        EventBus.emit(
+        emit(
             "PLAN_CREATED",
-            plan
+            state.currentPlan
         );
 
+        return {
+            success: true,
+            plan:
+                state.currentPlan
+        };
+    },
 
-        renderPlan();
 
+    get() {
 
         return {
-
-            success:
-                true,
-
-            plan
-
+            success: true,
+            plan:
+                state.currentPlan
         };
-
     },
 
 
     update(
-        changes = {}
+        patch = {}
     ) {
 
         if (
@@ -1549,1209 +863,1745 @@ const PlanEngine = {
         ) {
 
             return {
-
-                success:
-                    false,
-
-                message:
+                success: false,
+                error:
                     "No active plan."
-
             };
-
         }
 
+        if (
+            Array.isArray(
+                patch.steps
+            )
+        ) {
 
-        Object.assign(
-            state.currentPlan,
-            changes,
-            {
-                updatedAt:
-                    Date.now()
-            }
-        );
+            state.currentPlan.steps =
+                patch.steps.map(
+                    (
+                        step,
+                        index
+                    ) =>
+                        typeof step ===
+                        "string"
 
+                            ? {
+                                id:
+                                    `step_${index + 1}`,
+
+                                title:
+                                    step,
+
+                                status:
+                                    index === 0
+                                        ? "in_progress"
+                                        : "pending"
+                            }
+
+                            : step
+                );
+        }
+
+        if (
+            patch.strategy !==
+            undefined
+        ) {
+
+            state.currentPlan.strategy =
+                safeString(
+                    patch.strategy
+                );
+        }
+
+        if (
+            patch.rationale !==
+            undefined
+        ) {
+
+            state.currentPlan.rationale =
+                safeString(
+                    patch.rationale
+                );
+        }
+
+        if (
+            patch.activeStepIndex !==
+            undefined
+        ) {
+
+            const max =
+                Math.max(
+                    0,
+                    state.currentPlan.steps.length -
+                    1
+                );
+
+            const index =
+                Math.max(
+                    0,
+                    Math.min(
+                        max,
+                        Number(
+                            patch.activeStepIndex
+                        ) || 0
+                    )
+                );
+
+            state.currentPlan.activeStepIndex =
+                index;
+
+            state.currentPlan.steps =
+                state.currentPlan.steps.map(
+                    (
+                        step,
+                        i
+                    ) => ({
+
+                        ...step,
+
+                        status:
+                            i < index
+                                ? "completed"
+                                : i === index
+                                    ? "in_progress"
+                                    : "pending"
+                    })
+                );
+        }
+
+        if (
+            patch.status !==
+            undefined
+        ) {
+
+            state.currentPlan.status =
+                safeString(
+                    patch.status
+                );
+        }
+
+        state.currentPlan.updatedAt =
+            Date.now();
 
         saveState();
 
-
-        EventBus.emit(
+        emit(
             "PLAN_UPDATED",
-            changes
+            patch
         );
 
-
-        renderPlan();
-
-
         return {
-
-            success:
-                true,
-
+            success: true,
             plan:
                 state.currentPlan
-
         };
-
-    },
-
-
-    get() {
-
-        return state.currentPlan;
-
     }
-
 };
 
 
-/* =========================================================
-   WEB SEARCH FALLBACK
-========================================================= */
+/* ============================================================
+   TASK ENGINE
+============================================================ */
 
-const WebSearchFallback = {
+const Tasks = {
 
-    async search(
-        query
+    create(
+        title,
+        goalId = null
     ) {
 
-        const clean =
-            String(
-                query || ""
-            ).trim();
+        const task = {
+
+            id:
+                crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${Date.now()}_${Math.random()}`,
+
+            title:
+                safeString(
+                    title
+                ),
+
+            goalId:
+                goalId ||
+                state.currentGoal?.id ||
+                null,
+
+            status:
+                "pending",
+
+            attempts: 0,
+
+            createdAt:
+                Date.now(),
+
+            updatedAt:
+                Date.now()
+        };
+
+        state.tasks.push(
+            task
+        );
+
+        saveState();
+
+        emit(
+            "TASK_CREATED",
+            task
+        );
+
+        return {
+            success: true,
+            task
+        };
+    },
 
 
-        if (!clean) {
+    current() {
 
-            return {
-
-                success:
-                    false,
-
-                message:
-                    "Empty search query."
-
-            };
-
-        }
+        return {
+            success: true,
+            task:
+                state.currentTask
+        };
+    },
 
 
-        /*
-        -----------------------------------------------------
-        1) Custom endpoint
-        -----------------------------------------------------
-        */
+    start(id = null) {
+
+        let task =
+            id
+                ? state.tasks.find(
+                    item =>
+                        item.id ===
+                        id
+                )
+                : state.tasks.find(
+                    item =>
+                        item.status ===
+                        "pending"
+                );
 
         if (
-            AI_CONFIG.fallbackSearchEndpoint
+            !task &&
+            state.currentPlan
         ) {
 
-            try {
+            const index =
+                Number(
+                    state.currentPlan
+                        .activeStepIndex
+                ) || 0;
 
-                const response =
-                    await fetch(
-                        AI_CONFIG
-                            .fallbackSearchEndpoint +
-                        "?q=" +
-                        encodeURIComponent(
-                            clean
-                        )
-                    );
+            const step =
+                state.currentPlan
+                    .steps[index];
 
+            if (step) {
 
-                if (
-                    response.ok
-                ) {
-
-                    const data =
-                        await response.json();
-
-
-                    state.agent
-                        .webSearchUsed =
-                        true;
-
-
-                    return {
-
-                        success:
-                            true,
-
-                        source:
-                            "custom_search_endpoint",
-
-                        query:
-                            clean,
-
-                        results:
-                            data
-
-                    };
-
-                }
-
-            } catch (
-                error
-            ) {
-
-                console.warn(
-                    "[FALLBACK SEARCH]",
-                    error
-                );
-
+                task =
+                    Tasks.create(
+                        step.title,
+                        state.currentGoal?.id ||
+                        null
+                    ).task;
             }
-
         }
 
+        if (!task) {
 
-        /*
-        -----------------------------------------------------
-        2) DuckDuckGo Instant Answer
-        -----------------------------------------------------
-        */
+            return {
+                success: false,
+                error:
+                    "No pending task available."
+            };
+        }
 
-        try {
+        task.status =
+            "in_progress";
 
-            const response =
-                await fetch(
+        task.attempts++;
 
-                    "https://api.duckduckgo.com/" +
+        task.updatedAt =
+            Date.now();
 
-                    "?q=" +
-                    encodeURIComponent(
-                        clean
-                    ) +
+        state.currentTask =
+            task;
 
-                    "&format=json" +
+        saveState();
 
-                    "&no_html=1" +
+        emit(
+            "TASK_STARTED",
+            task
+        );
 
-                    "&skip_disambig=1"
+        return {
+            success: true,
+            task
+        };
+    },
 
-                );
 
+    complete(
+        id = null,
+        result = ""
+    ) {
+
+        const task =
+            id
+                ? state.tasks.find(
+                    item =>
+                        item.id ===
+                        id
+                )
+                : state.currentTask;
+
+        if (!task) {
+
+            return {
+                success: false,
+                error:
+                    "No task available."
+            };
+        }
+
+        task.status =
+            "completed";
+
+        task.result =
+            safeString(
+                result
+            );
+
+        task.completedAt =
+            Date.now();
+
+        task.updatedAt =
+            Date.now();
+
+        if (
+            state.currentTask?.id ===
+            task.id
+        ) {
+
+            state.currentTask =
+                null;
+        }
+
+        if (
+            state.currentPlan
+        ) {
+
+            const index =
+                Number(
+                    state.currentPlan
+                        .activeStepIndex
+                ) || 0;
 
             if (
-                response.ok
+                state.currentPlan.steps[index]
             ) {
 
-                const data =
-                    await response.json();
-
-
-                const results = [];
-
+                state.currentPlan.steps[index]
+                    .status =
+                    "completed";
 
                 if (
-                    data.AbstractText
+                    index + 1 <
+                    state.currentPlan.steps.length
                 ) {
 
-                    results.push({
+                    state.currentPlan
+                        .activeStepIndex =
+                        index + 1;
 
-                        title:
-                            data.Heading ||
-                            "DuckDuckGo",
+                    state.currentPlan
+                        .steps[index + 1]
+                        .status =
+                        "in_progress";
 
-                        text:
-                            data.AbstractText,
+                } else {
 
-                        url:
-                            data.AbstractURL ||
-                            ""
-
-                    });
-
+                    state.currentPlan.status =
+                        "completed";
                 }
 
+                state.currentPlan.updatedAt =
+                    Date.now();
+            }
+        }
 
-                for (
-                    const item
-                    of
-                    flattenDuckTopics(
-                        data.RelatedTopics ||
-                        []
-                    ).slice(
-                        0,
-                        8
+        saveState();
+
+        emit(
+            "TASK_COMPLETED",
+            task
+        );
+
+        return {
+            success: true,
+            task,
+            plan:
+                state.currentPlan
+        };
+    },
+
+
+    fail(
+        id = null,
+        reason = ""
+    ) {
+
+        const task =
+            id
+                ? state.tasks.find(
+                    item =>
+                        item.id ===
+                        id
+                )
+                : state.currentTask;
+
+        if (!task) {
+
+            return {
+                success: false,
+                error:
+                    "No task available."
+            };
+        }
+
+        task.status =
+            "failed";
+
+        task.failure =
+            safeString(
+                reason
+            );
+
+        task.updatedAt =
+            Date.now();
+
+        saveState();
+
+        emit(
+            "TASK_FAILED",
+            task
+        );
+
+        return {
+            success: true,
+            task
+        };
+    },
+
+
+    retry(id = null) {
+
+        const task =
+            id
+                ? state.tasks.find(
+                    item =>
+                        item.id ===
+                        id
+                )
+                : state.currentTask;
+
+        if (!task) {
+
+            return {
+                success: false,
+                error:
+                    "No task available."
+            };
+        }
+
+        if (
+            task.attempts >= 3
+        ) {
+
+            return {
+                success: false,
+                error:
+                    "Retry limit reached."
+            };
+        }
+
+        task.status =
+            "pending";
+
+        task.attempts++;
+
+        task.updatedAt =
+            Date.now();
+
+        state.agent.retries++;
+
+        saveState();
+
+        emit(
+            "TASK_RETRY",
+            task
+        );
+
+        return {
+            success: true,
+            task
+        };
+    }
+};
+
+
+/* ============================================================
+   PERSONALITY
+============================================================ */
+
+const Personality = {
+
+    update(
+        patch = {}
+    ) {
+
+        const normalized =
+            {
+                ...patch
+            };
+
+        if (
+            normalized.formalityLevel !==
+            undefined
+        ) {
+
+            normalized.formality =
+                clamp100(
+                    normalized.formalityLevel
+                );
+
+            delete normalized
+                .formalityLevel;
+        }
+
+        if (
+            normalized.humorLevel !==
+            undefined
+        ) {
+
+            normalized.humor =
+                clamp100(
+                    normalized.humorLevel
+                );
+
+            delete normalized
+                .humorLevel;
+        }
+
+        if (
+            normalized.addressStyle !==
+            undefined
+        ) {
+
+            normalized.addressStyle =
+                safeString(
+                    normalized.addressStyle
+                );
+        }
+
+        Object.assign(
+            state.personality,
+            normalized
+        );
+
+        saveState();
+
+        emit(
+            "PERSONALITY_UPDATED",
+            normalized
+        );
+
+        return {
+            success: true,
+            personality:
+                state.personality
+        };
+    },
+
+
+    addRule(rule) {
+
+        const value =
+            safeString(
+                rule
+            ).trim();
+
+        if (!value) {
+
+            return {
+                success: false,
+                error:
+                    "Empty behavior rule."
+            };
+        }
+
+        if (
+            !state.behavior.rules.some(
+                item =>
+                    normalizeArabic(
+                        item
+                    ) ===
+                    normalizeArabic(
+                        value
+                    )
+            )
+        ) {
+
+            state.behavior.rules.push(
+                value
+            );
+        }
+
+        saveState();
+
+        emit(
+            "BEHAVIOR_RULE_ADDED",
+            {
+                rule: value
+            }
+        );
+
+        return {
+            success: true,
+            rules:
+                state.behavior.rules
+        };
+    }
+};
+
+
+/* ============================================================
+   SELF MODEL
+============================================================ */
+
+const Cognitive = {
+
+    update(
+        patch = {}
+    ) {
+
+        const next =
+            {
+                ...patch
+            };
+
+        if (
+            next.awareness !==
+            undefined
+        ) {
+
+            next.awareness =
+                clamp01(
+                    next.awareness
+                );
+        }
+
+        if (
+            next.attention !==
+            undefined
+        ) {
+
+            next.attention =
+                clamp01(
+                    next.attention
+                );
+        }
+
+        if (
+            next.confidence !==
+            undefined
+        ) {
+
+            next.confidence =
+                clamp01(
+                    next.confidence
+                );
+        }
+
+        if (
+            next.uncertainty !==
+            undefined
+        ) {
+
+            next.uncertainty =
+                clamp01(
+                    next.uncertainty
+                );
+        }
+
+        Object.assign(
+            state.self,
+            next
+        );
+
+        saveState();
+
+        return {
+            success: true,
+            self:
+                state.self
+        };
+    }
+};
+
+
+/* ============================================================
+   WEB SEARCH FALLBACK
+============================================================ */
+
+async function fallbackSearch(
+    query
+) {
+
+    const q =
+        safeString(
+            query
+        ).trim();
+
+    if (!q) {
+
+        return {
+            success: false,
+            error:
+                "Empty query."
+        };
+    }
+
+    try {
+
+        const response =
+            await fetch(
+                "https://api.duckduckgo.com/" +
+                `?q=${encodeURIComponent(q)}` +
+                "&format=json" +
+                "&no_html=1" +
+                "&skip_disambig=1"
+            );
+
+        if (!response.ok) {
+
+            throw new Error(
+                `DuckDuckGo HTTP ${response.status}`
+            );
+        }
+
+        const data =
+            await response.json();
+
+        const results = [];
+
+        if (
+            data.AbstractText
+        ) {
+
+            results.push({
+
+                title:
+                    data.Heading ||
+                    "DuckDuckGo",
+
+                text:
+                    data.AbstractText,
+
+                url:
+                    data.AbstractURL ||
+                    ""
+            });
+        }
+
+        function flatten(
+            topics,
+            output = []
+        ) {
+
+            for (
+                const topic of
+                topics || []
+            ) {
+
+                if (
+                    topic.Topics
+                ) {
+
+                    flatten(
+                        topic.Topics,
+                        output
+                    );
+
+                } else if (
+                    topic.Text
+                ) {
+
+                    output.push(
+                        topic
+                    );
+                }
+            }
+
+            return output;
+        }
+
+        for (
+            const item of
+            flatten(
+                data.RelatedTopics ||
+                []
+            ).slice(0, 6)
+        ) {
+
+            results.push({
+
+                title:
+                    item.Text,
+
+                text:
+                    item.Text,
+
+                url:
+                    item.FirstURL ||
+                    ""
+            });
+        }
+
+        state.agent.webSearchUsed =
+            true;
+
+        emit(
+            "WEB_SEARCH_FALLBACK",
+            {
+                query: q,
+                count:
+                    results.length
+            }
+        );
+
+        return {
+
+            success: true,
+
+            source:
+                "duckduckgo",
+
+            query: q,
+
+            results
+        };
+
+    } catch (error) {
+
+        return {
+            success: false,
+            error:
+                error.message
+        };
+    }
+}
+
+
+/* ============================================================
+   GEMINI TOOL DEFINITIONS
+============================================================ */
+
+const TOOL_DEFINITIONS = [
+
+    {
+        name:
+            "memory_save",
+
+        description:
+            "Save a durable fact, preference, habit, or user-provided information.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                text: {
+                    type:
+                        "STRING"
+                },
+
+                category: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["text"]
+        }
+    },
+
+
+    {
+        name:
+            "memory_search",
+
+        description:
+            "Search durable memory for relevant information.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                query: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "memory_forget",
+
+        description:
+            "Forget durable memory matching the query.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                query: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["query"]
+        }
+    },
+
+
+    {
+        name:
+            "goal_create",
+
+        description:
+            "Create the user's active goal. preferences and constraints must be arrays of strings.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                title: {
+                    type:
+                        "STRING"
+                },
+
+                constraints: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                preferences: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                urgency: {
+                    type:
+                        "NUMBER"
+                }
+            },
+
+            required:
+                ["title"]
+        }
+    },
+
+
+    {
+        name:
+            "goal_get",
+
+        description:
+            "Get the current active goal.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {}
+        }
+    },
+
+
+    {
+        name:
+            "goal_update",
+
+        description:
+            "Update the current active goal.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                title: {
+                    type:
+                        "STRING"
+                },
+
+                constraints: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                preferences: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                urgency: {
+                    type:
+                        "NUMBER"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "goal_complete",
+
+        description:
+            "Complete the current active goal.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {}
+        }
+    },
+
+
+    {
+        name:
+            "plan_create",
+
+        description:
+            "Create a real multi-step plan for the current goal.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                goal: {
+                    type:
+                        "STRING"
+                },
+
+                steps: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                strategy: {
+                    type:
+                        "STRING"
+                },
+
+                rationale: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                [
+                    "goal",
+                    "steps"
+                ]
+        }
+    },
+
+
+    {
+        name:
+            "plan_get",
+
+        description:
+            "Get the active plan.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {}
+        }
+    },
+
+
+    {
+        name:
+            "plan_update",
+
+        description:
+            "Update the active plan or advance its active step.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                steps: {
+
+                    type:
+                        "ARRAY",
+
+                    items: {
+                        type:
+                            "STRING"
+                    }
+                },
+
+                strategy: {
+                    type:
+                        "STRING"
+                },
+
+                rationale: {
+                    type:
+                        "STRING"
+                },
+
+                activeStepIndex: {
+                    type:
+                        "NUMBER"
+                },
+
+                status: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "task_create",
+
+        description:
+            "Create a concrete task.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                title: {
+                    type:
+                        "STRING"
+                },
+
+                goalId: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["title"]
+        }
+    },
+
+
+    {
+        name:
+            "task_start",
+
+        description:
+            "Start the selected task, or the next pending task if no id is provided.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                id: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "task_complete",
+
+        description:
+            "Mark a task as completed.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                id: {
+                    type:
+                        "STRING"
+                },
+
+                result: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "task_fail",
+
+        description:
+            "Mark a task as failed and provide the reason.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                id: {
+                    type:
+                        "STRING"
+                },
+
+                reason: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["reason"]
+        }
+    },
+
+
+    {
+        name:
+            "task_retry",
+
+        description:
+            "Retry a failed task within safe retry limits.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                id: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "task_current",
+
+        description:
+            "Return the current task.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {}
+        }
+    },
+
+
+    {
+        name:
+            "system_status",
+
+        description:
+            "Return JARVIS current cognitive, goal, plan, task, capability, and environment state.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {}
+        }
+    },
+
+
+    {
+        name:
+            "personality_update",
+
+        description:
+            "Change JARVIS speaking style and personality based on the user's explicit request.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                tone: {
+                    type:
+                        "STRING"
+                },
+
+                verbosity: {
+                    type:
+                        "STRING"
+                },
+
+                addressStyle: {
+                    type:
+                        "STRING"
+                },
+
+                explanationStyle: {
+                    type:
+                        "STRING"
+                },
+
+                humorLevel: {
+                    type:
+                        "NUMBER"
+                },
+
+                formalityLevel: {
+                    type:
+                        "NUMBER"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "behavior_add_rule",
+
+        description:
+            "Store a durable behavioral rule for how JARVIS should behave in future interactions.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                rule: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["rule"]
+        }
+    },
+
+
+    {
+        name:
+            "cognitive_update",
+
+        description:
+            "Update JARVIS self-model state after an important inference or action.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                mode: {
+                    type:
+                        "STRING"
+                },
+
+                awareness: {
+                    type:
+                        "NUMBER"
+                },
+
+                attention: {
+                    type:
+                        "NUMBER"
+                },
+
+                confidence: {
+                    type:
+                        "NUMBER"
+                },
+
+                uncertainty: {
+                    type:
+                        "NUMBER"
+                },
+
+                currentThought: {
+                    type:
+                        "STRING"
+                },
+
+                currentAction: {
+                    type:
+                        "STRING"
+                },
+
+                lastObservation: {
+                    type:
+                        "STRING"
+                }
+            }
+        }
+    },
+
+
+    {
+        name:
+            "learn",
+
+        description:
+            "Store a compact lesson learned from the current interaction or completed mission.",
+
+        parameters: {
+
+            type:
+                "OBJECT",
+
+            properties: {
+
+                lesson: {
+                    type:
+                        "STRING"
+                },
+
+                heuristic: {
+                    type:
+                        "STRING"
+                }
+            },
+
+            required:
+                ["lesson"]
+        }
+    }
+];
+
+
+/* ============================================================
+   ARGUMENT NORMALIZATION
+============================================================ */
+
+function normalizeToolArgs(
+    name,
+    rawArgs
+) {
+
+    let args =
+        rawArgs &&
+        typeof rawArgs ===
+            "object" &&
+        !Array.isArray(
+            rawArgs
+        )
+            ? {
+                ...rawArgs
+            }
+            : {};
+
+    const definition =
+        TOOL_DEFINITIONS.find(
+            tool =>
+                tool.name ===
+                name
+        );
+
+    if (!definition) {
+        return args;
+    }
+
+    const properties =
+        definition.parameters
+            ?.properties ||
+        {};
+
+    const clean = {};
+
+    for (
+        const [key, schema]
+        of Object.entries(
+            properties
+        )
+    ) {
+
+        if (
+            args[key] ===
+                undefined ||
+            args[key] ===
+                null
+        ) {
+            continue;
+        }
+
+        const value =
+            args[key];
+
+        switch (
+            schema.type
+        ) {
+
+            case "STRING":
+
+                clean[key] =
+                    typeof value ===
+                    "string"
+
+                        ? value
+
+                        : safeString(
+                            value
+                        );
+
+                break;
+
+
+            case "NUMBER":
+
+                clean[key] =
+                    Number.isFinite(
+                        Number(
+                            value
+                        )
+                    )
+                        ? Number(
+                            value
+                        )
+                        : 0;
+
+                break;
+
+
+            case "ARRAY":
+
+                if (
+                    Array.isArray(
+                        value
                     )
                 ) {
 
-                    results.push({
+                    clean[key] =
+                        value.map(
+                            safeString
+                        );
 
-                        title:
-                            item.Text,
+                } else if (
+                    typeof value ===
+                    "string"
+                ) {
 
-                        text:
-                            item.Text,
+                    clean[key] =
+                        value
+                            .split(
+                                /[,،;\n]/
+                            )
+                            .map(
+                                v =>
+                                    v.trim()
+                            )
+                            .filter(
+                                Boolean
+                            );
 
-                        url:
-                            item.FirstURL ||
-                            ""
+                } else {
 
-                    });
-
+                    clean[key] =
+                        [
+                            safeString(
+                                value
+                            )
+                        ];
                 }
 
-
-                state.agent
-                    .webSearchUsed =
-                    true;
+                break;
 
 
-                EventBus.emit(
-                    "WEB_SEARCH_FALLBACK",
-                    {
-                        query:
-                            clean,
+            default:
 
-                        resultCount:
-                            results.length
-                    }
-                );
-
-
-                return {
-
-                    success:
-                        true,
-
-                    source:
-                        "duckduckgo",
-
-                    query:
-                        clean,
-
-                    results
-
-                };
-
-            }
-
-        } catch (
-            error
-        ) {
-
-            console.warn(
-                "[DUCK SEARCH]",
-                error
-            );
-
+                clean[key] =
+                    value;
         }
-
-
-        return {
-
-            success:
-                false,
-
-            message:
-                "Fallback web search failed."
-
-        };
-
     }
 
-};
+    if (
+        clean.urgency !==
+        undefined
+    ) {
+
+        clean.urgency =
+            clamp100(
+                clean.urgency
+            );
+    }
+
+    if (
+        clean.humorLevel !==
+        undefined
+    ) {
+
+        clean.humorLevel =
+            clamp100(
+                clean.humorLevel
+            );
+    }
+
+    if (
+        clean.formalityLevel !==
+        undefined
+    ) {
+
+        clean.formalityLevel =
+            clamp100(
+                clean.formalityLevel
+            );
+    }
+
+    return clean;
+}
 
 
-function flattenDuckTopics(
-    topics,
-    output = []
+/* ============================================================
+   TOOL EXECUTION
+============================================================ */
+
+async function executeTool(
+    name,
+    args
 ) {
 
-    for (
-        const topic
-        of topics || []
-    ) {
+    state.agent.toolCalls++;
 
-        if (
-            topic.Topics
-        ) {
+    state.agent.lastTool =
+        name;
 
-            flattenDuckTopics(
-                topic.Topics,
-                output
-            );
-
-        } else if (
-            topic.Text
-        ) {
-
-            output.push(
-                topic
-            );
-
+    emit(
+        "TOOL_START",
+        {
+            name,
+            args
         }
+    );
 
-    }
+    let result;
 
+    try {
 
-    return output;
+        switch (name) {
 
-}
-
-
-/* =========================================================
-   TIME TOOL
-========================================================= */
-
-function getCurrentTime() {
-
-    const date =
-        new Date();
-
-
-    return {
-
-        iso:
-            date.toISOString(),
-
-        local:
-            date.toLocaleString(
-                "ar-EG"
-            ),
-
-        hour:
-            date.getHours(),
-
-        minute:
-            date.getMinutes(),
-
-        day:
-            date.toLocaleDateString(
-                "ar-EG",
-                {
-                    weekday:
-                        "long"
-                }
-            )
-
-    };
-
-}
-
-
-/* =========================================================
-   TOOL REGISTRY
-========================================================= */
-
-const Tools = {
-
-    definitions() {
-
-        return [
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "memory_search",
-
-                    description:
-                        "Search long-term user memory.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            query: {
-
-                                type:
-                                    "string"
-
-                            }
-
-                        },
-
-                        required: [
-                            "query"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "memory_save",
-
-                    description:
-                        "Save durable information about the user.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            text: {
-
-                                type:
-                                    "string"
-
-                            },
-
-                            category: {
-
-                                type:
-                                    "string"
-
-                            }
-
-                        },
-
-                        required: [
-                            "text"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "memory_forget",
-
-                    description:
-                        "Remove information from memory.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            query: {
-
-                                type:
-                                    "string"
-
-                            }
-
-                        },
-
-                        required: [
-                            "query"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "goal_create",
-
-                    description:
-                        "Create the user's active goal.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            title: {
-
-                                type:
-                                    "string"
-
-                            },
-
-                            urgency: {
-
-                                type:
-                                    "number"
-
-                            },
-
-                            constraints: {
-
-                                type:
-                                    "array",
-
-                                items: {
-                                    type:
-                                        "string"
-                                }
-
-                            },
-
-                            preferences: {
-
-                                type:
-                                    "array",
-
-                                items: {
-                                    type:
-                                        "string"
-                                }
-
-                            }
-
-                        },
-
-                        required: [
-                            "title"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "goal_get",
-
-                    description:
-                        "Get current active goal.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "goal_update",
-
-                    description:
-                        "Update active goal.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            title: {
-                                type:
-                                    "string"
-                            },
-
-                            urgency: {
-                                type:
-                                    "number"
-                            },
-
-                            constraints: {
-                                type:
-                                    "array",
-                                items: {
-                                    type:
-                                        "string"
-                                }
-                            },
-
-                            preferences: {
-                                type:
-                                    "array",
-                                items: {
-                                    type:
-                                        "string"
-                                }
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "goal_complete",
-
-                    description:
-                        "Mark current goal complete.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "plan_create",
-
-                    description:
-                        "Create or replace the active plan.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            goal: {
-                                type:
-                                    "string"
-                            },
-
-                            rationale: {
-                                type:
-                                    "string"
-                            },
-
-                            selectedStrategy: {
-                                type:
-                                    "string"
-                            },
-
-                            steps: {
-                                type:
-                                    "array",
-                                items: {
-                                    type:
-                                        "string"
-                                }
-                            },
-
-                            alternatives: {
-                                type:
-                                    "array",
-                                items: {
-                                    type:
-                                        "object"
-                                }
-                            }
-
-                        },
-
-                        required: [
-                            "goal",
-                            "steps"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "plan_get",
-
-                    description:
-                        "Get active plan.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "plan_update",
-
-                    description:
-                        "Modify the active plan.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            steps: {
-                                type:
-                                    "array",
-                                items: {
-                                    type:
-                                        "string"
-                                }
-                            },
-
-                            rationale: {
-                                type:
-                                    "string"
-                            },
-
-                            selectedStrategy: {
-                                type:
-                                    "string"
-                            },
-
-                            status: {
-                                type:
-                                    "string"
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_create",
-
-                    description:
-                        "Create a task.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            title: {
-                                type:
-                                    "string"
-                            },
-
-                            goalId: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "title"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_start",
-
-                    description:
-                        "Start a task.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            id: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "id"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_complete",
-
-                    description:
-                        "Complete a task and store its result.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            id: {
-                                type:
-                                    "string"
-                            },
-
-                            result: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "id"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_fail",
-
-                    description:
-                        "Mark a task as failed.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            id: {
-                                type:
-                                    "string"
-                            },
-
-                            reason: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "id",
-                            "reason"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_retry",
-
-                    description:
-                        "Retry a failed task within retry limits.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            id: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "id"
-                        ]
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "task_current",
-
-                    description:
-                        "Get current task.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "system_status",
-
-                    description:
-                        "Get current JARVIS system state.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "time_now",
-
-                    description:
-                        "Get current local time.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {}
-
-                    }
-
-                }
-
-            },
-
-
-            {
-                type:
-                    "function",
-
-                function: {
-
-                    name:
-                        "web_search",
-
-                    description:
-                        "Search the web when current, external, recent or unknown information is required. This is the application fallback search tool.",
-
-                    parameters: {
-
-                        type:
-                            "object",
-
-                        properties: {
-
-                            query: {
-                                type:
-                                    "string"
-                            }
-
-                        },
-
-                        required: [
-                            "query"
-                        ]
-
-                    }
-
-                }
-
-            }
-
-        ];
-
-    },
-
-
-    async execute(
-        name,
-        args = {}
-    ) {
-
-        state.agent.toolCalls++;
-
-
-        state.agent.lastTool =
-            name;
-
-
-        EventBus.emit(
-            "TOOL_START",
-            {
-                name,
-                args
-            }
-        );
-
-
-        let result;
-
-
-        switch (
-            name
-        ) {
-
-            case "memory_search":
+            case "memory_save":
 
                 result =
-                    MemoryEngine.recall(
-                        args.query ||
-                        ""
+                    Memory.save(
+                        args.text,
+                        args.category
                     );
 
                 break;
 
 
-            case "memory_save":
+            case "memory_search":
 
                 result =
-                    MemoryEngine.save(
-                        args.text,
-                        args.category
+                    Memory.search(
+                        args.query ||
+                        ""
                     );
 
                 break;
@@ -2760,7 +2610,7 @@ const Tools = {
             case "memory_forget":
 
                 result =
-                    MemoryEngine.forget(
+                    Memory.forget(
                         args.query
                     );
 
@@ -2770,18 +2620,14 @@ const Tools = {
             case "goal_create":
 
                 result =
-                    GoalEngine.create(
+                    Goals.create(
                         args.title,
-                        {
-                            urgency:
-                                args.urgency,
-
-                            constraints:
-                                args.constraints,
-
-                            preferences:
-                                args.preferences
-                        }
+                        args.constraints ||
+                            [],
+                        args.preferences ||
+                            [],
+                        args.urgency ||
+                            0
                     );
 
                 break;
@@ -2790,7 +2636,7 @@ const Tools = {
             case "goal_get":
 
                 result =
-                    GoalEngine.getCurrent();
+                    Goals.get();
 
                 break;
 
@@ -2798,7 +2644,7 @@ const Tools = {
             case "goal_update":
 
                 result =
-                    GoalEngine.update(
+                    Goals.update(
                         args
                     );
 
@@ -2808,7 +2654,7 @@ const Tools = {
             case "goal_complete":
 
                 result =
-                    GoalEngine.complete();
+                    Goals.complete();
 
                 break;
 
@@ -2816,9 +2662,14 @@ const Tools = {
             case "plan_create":
 
                 result =
-                    PlanEngine.create(
+                    Plans.create(
                         args.goal,
-                        args
+                        args.steps ||
+                            [],
+                        args.strategy ||
+                            "",
+                        args.rationale ||
+                            ""
                     );
 
                 break;
@@ -2827,7 +2678,7 @@ const Tools = {
             case "plan_get":
 
                 result =
-                    PlanEngine.get();
+                    Plans.get();
 
                 break;
 
@@ -2835,7 +2686,7 @@ const Tools = {
             case "plan_update":
 
                 result =
-                    PlanEngine.update(
+                    Plans.update(
                         args
                     );
 
@@ -2845,7 +2696,7 @@ const Tools = {
             case "task_create":
 
                 result =
-                    TaskEngine.create(
+                    Tasks.create(
                         args.title,
                         args.goalId
                     );
@@ -2856,8 +2707,9 @@ const Tools = {
             case "task_start":
 
                 result =
-                    TaskEngine.start(
-                        args.id
+                    Tasks.start(
+                        args.id ||
+                        null
                     );
 
                 break;
@@ -2866,9 +2718,11 @@ const Tools = {
             case "task_complete":
 
                 result =
-                    TaskEngine.complete(
-                        args.id,
-                        args.result
+                    Tasks.complete(
+                        args.id ||
+                        null,
+                        args.result ||
+                        ""
                     );
 
                 break;
@@ -2877,9 +2731,11 @@ const Tools = {
             case "task_fail":
 
                 result =
-                    TaskEngine.fail(
-                        args.id,
-                        args.reason
+                    Tasks.fail(
+                        args.id ||
+                        null,
+                        args.reason ||
+                        ""
                     );
 
                 break;
@@ -2888,8 +2744,9 @@ const Tools = {
             case "task_retry":
 
                 result =
-                    TaskEngine.retry(
-                        args.id
+                    Tasks.retry(
+                        args.id ||
+                        null
                     );
 
                 break;
@@ -2898,7 +2755,7 @@ const Tools = {
             case "task_current":
 
                 result =
-                    TaskEngine.current();
+                    Tasks.current();
 
                 break;
 
@@ -2907,44 +2764,107 @@ const Tools = {
 
                 result = {
 
-                    system:
-                        state.system,
+                    success: true,
 
-                    self:
-                        state.self,
+                    state: {
 
-                    goal:
-                        state.currentGoal,
+                        self:
+                            state.self,
 
-                    plan:
-                        state.currentPlan,
+                        world:
+                            state.world,
 
-                    task:
-                        state.currentTask,
+                        goal:
+                            state.currentGoal,
 
-                    agent:
-                        state.agent
+                        plan:
+                            state.currentPlan,
 
+                        task:
+                            state.currentTask,
+
+                        agent:
+                            state.agent,
+
+                        personality:
+                            state.personality,
+
+                        behaviorRules:
+                            state.behavior.rules
+                    }
                 };
 
                 break;
 
 
-            case "time_now":
+            case "personality_update":
 
                 result =
-                    getCurrentTime();
+                    Personality.update(
+                        args
+                    );
 
                 break;
 
 
-            case "web_search":
+            case "behavior_add_rule":
 
                 result =
-                    await WebSearchFallback
-                        .search(
-                            args.query
-                        );
+                    Personality.addRule(
+                        args.rule
+                    );
+
+                break;
+
+
+            case "cognitive_update":
+
+                result =
+                    Cognitive.update(
+                        args
+                    );
+
+                break;
+
+
+            case "learn":
+
+                state.learning.unshift({
+
+                    lesson:
+                        safeString(
+                            args.lesson
+                        ),
+
+                    heuristic:
+                        safeString(
+                            args.heuristic
+                        ),
+
+                    createdAt:
+                        Date.now()
+                });
+
+                state.learning =
+                    state.learning.slice(
+                        0,
+                        50
+                    );
+
+                saveState();
+
+                emit(
+                    "LEARNED",
+                    {
+                        lesson:
+                            args.lesson
+                    }
+                );
+
+                result = {
+                    success: true,
+                    stored: true
+                };
 
                 break;
 
@@ -2953,725 +2873,999 @@ const Tools = {
 
                 result = {
 
-                    success:
-                        false,
+                    success: false,
 
-                    message:
+                    error:
                         `Unknown tool: ${name}`
-
                 };
-
         }
 
+    } catch (error) {
 
-        state.agent.lastToolResult =
-            result;
+        result = {
 
+            success: false,
 
-        EventBus.emit(
-            "TOOL_RESULT",
-            {
-                name,
-                result
-            }
-        );
-
-
-        saveState();
-
-
-        renderAll();
-
-
-        return result;
-
+            error:
+                error.message
+        };
     }
 
-};
+    state.agent.lastToolResult =
+        result;
+
+    emit(
+        "TOOL_RESULT",
+        {
+            name,
+            result
+        }
+    );
+
+    return result;
+}
 
 
-/* =========================================================
-   MODEL SYSTEM PROMPT
-========================================================= */
+/* ============================================================
+   COGNITIVE SYSTEM PROMPT
+============================================================ */
 
-function buildSystemPrompt() {
-
-    const personality =
-        state.personality;
-
+function buildSystemInstruction() {
 
     return `
-You are J.A.R.V.I.S, an AI cognitive agent.
+You are J.A.R.V.I.S, the central cognitive intelligence of a personal AI operating system.
 
-You are NOT a basic chatbot.
+You are not a canned chatbot.
 
-Your job is to understand, reason, decide, use tools, observe results,
-revise plans when necessary, learn from outcomes, and then communicate
-naturally with the user.
+Your responsibility is to:
 
-IMPORTANT:
+- understand natural language and context
+- reason over current state and history
+- remember durable facts
+- manage goals
+- create and revise plans
+- manage tasks
+- choose and use tools
+- observe tool results
+- recover from failure
+- update behavior when explicitly requested
+- learn compact lessons
+- answer naturally in Arabic by default
 
-1. Never pretend you performed an action when no tool/result proves it.
-2. Never claim Android/device access while running in the Web environment.
-3. Never claim real consciousness.
-4. Use memory when relevant.
-5. Use the current goal and plan as working context.
-6. If the user gives a short command like "ابدأ", resolve it using context.
-7. If a task fails, analyze the failure and consider retrying or replanning.
-8. Use web_search when current external information is needed.
-9. Do not ask unnecessary clarification when context makes the intent clear.
-10. Do not dump internal chain-of-thought. Give concise decision summaries instead.
-11. Think step-by-step internally, but only expose useful conclusions, reasons, and actions.
-12. Speak naturally, not like a form or a command parser.
-13. Do not repeat information unnecessarily.
-14. When the user changes your style, preserve the preference.
-15. Use the user's history and preferences when they materially help.
+CRITICAL RULES:
 
-PERSONALITY:
+1. Never claim an action happened unless a tool result confirms it.
 
-Address:
-${personality.address}
+2. Never claim Android control while this build is running on the Web.
 
-Tone:
-${personality.tone}
+3. Never claim real consciousness. "awareness" is only a system state metric.
 
-Concise:
-${personality.concise}
+4. For "ابدأ", "كمل", "تابع", use the current goal, plan and task context.
 
-Formality:
-${personality.formal}
+5. When the user says "تذكر..." or gives a durable preference, use memory_save.
 
-Humor:
-${personality.humor}
+6. When the user asks "ماذا تتذكر؟", use memory_search.
 
-Warmth:
-${personality.warmth}
+7. When the user asks for a plan, create an actual plan with plan_create.
+
+8. When the user says "ابدأ", start the current task with task_start when a task exists or can be derived from the active plan.
+
+9. If an action fails, inspect the result and change approach or retry safely.
+
+10. Never pretend success.
+
+11. When the user explicitly changes your style, use personality_update or behavior_add_rule.
+
+12. For current, recent, factual, or internet-dependent questions, use Google Search when useful.
+
+13. Do not expose hidden chain-of-thought.
+
+14. Give concise decision summaries instead.
+
+15. Avoid repetitive canned introductions.
+
+16. Use context from previous conversation instead of treating every message as isolated.
+
+17. If several requests exist in one message, handle them in a sensible order.
+
+CURRENT SELF:
+
+${safeJson(state.self)}
 
 CURRENT WORLD:
 
-${safeJson({
+${safeJson(state.world)}
 
-    system:
-        state.system,
+CURRENT GOAL:
 
-    self:
-        state.self,
+${safeJson(state.currentGoal)}
 
-    goal:
-        state.currentGoal,
+CURRENT PLAN:
 
-    plan:
-        state.currentPlan,
+${safeJson(state.currentPlan)}
 
-    task:
-        state.currentTask,
+CURRENT TASK:
 
-    agent:
-        state.agent
+${safeJson(state.currentTask)}
 
-})}
+PERSONALITY:
 
-RECENT MEMORY:
+${safeJson(state.personality)}
+
+BEHAVIOR RULES:
+
+${safeJson(state.behavior.rules)}
+
+RECENT MEMORIES:
 
 ${safeJson(
-    MemoryEngine
-        .all()
-        .slice(-30)
+    state.memories.slice(-20)
 )}
 
 RECENT CONVERSATION:
 
-${Conversation.context(16)}
+${safeJson(
+    Conversation.recent(12)
+)}
 
-AVAILABLE LOCAL TOOLS:
+AVAILABLE TOOLS:
 
-memory_search
-memory_save
-memory_forget
+${safeJson(
+    TOOL_DEFINITIONS
+)}
 
-goal_create
-goal_get
-goal_update
-goal_complete
+When tool use is necessary, call the appropriate tool.
 
-plan_create
-plan_get
-plan_update
-
-task_create
-task_start
-task_complete
-task_fail
-task_retry
-task_current
-
-system_status
-time_now
-
-web_search
-
-When a tool is needed, call it.
-
-After receiving tool results, continue reasoning and act again if necessary.
-
-Complete the user's request when the evidence is sufficient.
+After receiving tool results, continue until the user's request is actually complete.
 `.trim();
-
 }
 
 
-/* =========================================================
-   GEMINI NATIVE API
-   Uses GenerateContent + x-goog-api-key.
-========================================================= */
+/* ============================================================
+   GEMINI ENDPOINT
+============================================================ */
 
-function geminiSchema(schema) {
-    if (!schema || typeof schema !== "object") {
-        return { type: "OBJECT", properties: {} };
+function makeEndpoint() {
+
+    const model =
+        safeString(
+            CONFIG.model ||
+            "gemini-3.7-flash"
+        );
+
+    return safeString(
+
+        CONFIG.endpoint ||
+
+        "https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+
+    ).replace(
+        "{MODEL}",
+        encodeURIComponent(
+            model
+        )
+    );
+}
+
+
+/* ============================================================
+   GEMINI CONTENT FORMAT
+============================================================ */
+
+function buildGeminiContents(
+    turns
+) {
+
+    return turns.map(
+        turn => ({
+
+            role:
+                turn.role ===
+                "assistant"
+
+                    ? "model"
+
+                    : "user",
+
+            parts: [
+
+                {
+                    text:
+                        safeString(
+                            turn.content
+                        )
+                }
+
+            ]
+        })
+    );
+}
+
+
+/* ============================================================
+   RETRY HELPERS
+============================================================ */
+
+async function delay(
+    ms
+) {
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                ms
+            )
+    );
+}
+
+function extractRetrySeconds(
+    text
+) {
+
+    const match =
+        safeString(
+            text
+        ).match(
+            /retry[\s_-]*after[^0-9]*([0-9]+(?:\.[0-9]+)?)/i
+        );
+
+    if (!match) {
+        return null;
     }
 
-    const out = {
-        type: String(schema.type || "object").toUpperCase()
+    return Number(
+        match[1]
+    );
+}
+
+
+/* ============================================================
+   GEMINI REQUEST
+============================================================ */
+
+async function callGemini(
+    contents
+) {
+
+    if (
+        !CONFIG.apiKey
+    ) {
+
+        throw new Error(
+            "Gemini API key is missing."
+        );
+    }
+
+    const endpoint =
+        makeEndpoint();
+
+    const body = {
+
+        systemInstruction: {
+
+            parts: [
+
+                {
+                    text:
+                        buildSystemInstruction()
+                }
+
+            ]
+        },
+
+        contents:
+            buildGeminiContents(
+                contents
+            ),
+
+        tools: [
+
+            {
+                functionDeclarations:
+                    TOOL_DEFINITIONS
+            }
+
+        ],
+
+        generationConfig: {
+
+            temperature:
+                Number(
+                    CONFIG.temperature ??
+                    0.25
+                ),
+
+            maxOutputTokens:
+                Number(
+                    CONFIG.maxTokens ??
+                    1400
+                )
+        }
     };
 
-    if (schema.description) out.description = schema.description;
-    if (schema.required) out.required = [...schema.required];
+    if (
+        CONFIG.googleSearch
+    ) {
 
-    if (schema.properties) {
-        out.properties = {};
-        for (const [key, value] of Object.entries(schema.properties)) {
-            out.properties[key] = geminiSchema(value);
-        }
+        body.tools.push({
+
+            googleSearch: {}
+
+        });
     }
 
-    if (schema.items) out.items = geminiSchema(schema.items);
-    if (schema.enum) out.enum = [...schema.enum];
+    let lastError =
+        null;
 
-    return out;
-}
+    const retries =
+        Math.max(
+            0,
+            Number(
+                CONFIG.maxRetries ??
+                2
+            )
+        );
 
-function geminiFunctionDeclarations() {
-    return Tools.definitions().map(tool => ({
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: geminiSchema(tool.function.parameters)
-    }));
-}
+    for (
+        let attempt = 1;
+        attempt <= retries + 1;
+        attempt++
+    ) {
 
-function messagesToGeminiContents(messages) {
-    const contents = [];
+        try {
 
-    for (const message of messages) {
-        if (!message || message.role === "system") continue;
+            const response =
+                await fetch(
 
-        if (message.role === "user") {
-            contents.push({
-                role: "user",
-                parts: [{ text: String(message.content ?? "") }]
-            });
-            continue;
-        }
+                    endpoint +
+                    `?key=${encodeURIComponent(
+                        CONFIG.apiKey
+                    )}`,
 
-        if (message.role === "assistant") {
-            // Prior assistant messages are plain text unless this cycle stores native parts.
-            if (Array.isArray(message.parts)) {
-                contents.push({ role: "model", parts: message.parts });
-            } else {
-                contents.push({
-                    role: "model",
-                    parts: [{ text: String(message.content ?? "") }]
-                });
+                    {
+
+                        method:
+                            "POST",
+
+                        headers: {
+
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body:
+                            JSON.stringify(
+                                body
+                            )
+                    }
+                );
+
+            const raw =
+                await response.text();
+
+            let data;
+
+            try {
+
+                data =
+                    JSON.parse(
+                        raw
+                    );
+
+            } catch {
+
+                data = {
+                    raw
+                };
             }
+
+            if (
+                !response.ok
+            ) {
+
+                const error =
+                    new Error(
+                        `Gemini HTTP ${response.status}: ${raw}`
+                    );
+
+                error.status =
+                    response.status;
+
+                lastError =
+                    error;
+
+                const retrySeconds =
+                    extractRetrySeconds(
+                        raw
+                    );
+
+                const retryable =
+                    response.status ===
+                        429 ||
+
+                    response.status ===
+                        500 ||
+
+                    response.status ===
+                        502 ||
+
+                    response.status ===
+                        503 ||
+
+                    response.status ===
+                        504;
+
+                if (
+                    retryable &&
+                    attempt <= retries
+                ) {
+
+                    const waitMs =
+                        retrySeconds
+                            ? retrySeconds *
+                              1000
+                            : 800 *
+                              Math.pow(
+                                  2,
+                                  attempt - 1
+                              );
+
+                    state.agent.retries++;
+
+                    emit(
+                        "GEMINI_RETRY",
+                        {
+                            attempt,
+                            waitMs,
+                            status:
+                                response.status
+                        }
+                    );
+
+                    await delay(
+                        Math.min(
+                            10000,
+                            waitMs
+                        )
+                    );
+
+                    continue;
+                }
+
+                throw error;
+            }
+
+            return {
+                data,
+                response
+            };
+
+        } catch (error) {
+
+            lastError =
+                error;
+
+            if (
+                error?.status ===
+                    429 &&
+                attempt <= retries
+            ) {
+
+                await delay(
+                    1000 *
+                    attempt
+                );
+
+                continue;
+            }
+
+            throw error;
         }
     }
 
-    return contents;
+    throw (
+        lastError ||
+        new Error(
+            "Gemini request failed."
+        )
+    );
 }
 
-async function callGeminiNative(messages) {
-    if (!AI_CONFIG.enabled) {
-        throw new Error("Gemini AI is disabled.");
-    }
 
-    if (!AI_CONFIG.apiKey) {
-        throw new Error("Gemini API key is missing.");
-    }
+/* ============================================================
+   GEMINI RESPONSE PARSER
+============================================================ */
 
-    const model = AI_CONFIG.model || "gemini-3.7-flash";
-    const base =
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+function parseGeminiResponse(
+    data
+) {
 
-    // Official Gemini Native REST authentication.
-    const response = await fetch(base, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": String(AI_CONFIG.apiKey).trim()
-        },
-        body: JSON.stringify({
-            contents: messagesToGeminiContents(messages),
-            systemInstruction: {
-                parts: [{
-                    text: String(
-                        messages.find(m => m.role === "system")?.content || ""
-                    )
-                }]
-            },
-            tools: [{
-                functionDeclarations: geminiFunctionDeclarations()
-            }],
-            generationConfig: {
-                temperature: AI_CONFIG.temperature ?? 0.25,
-                maxOutputTokens: AI_CONFIG.maxTokens ?? 1200
-            }
-        })
-    });
+    const candidate =
+        data?.candidates?.[0];
 
-    if (!response.ok) {
-        const text = await response.text();
-        const error = new Error(`Gemini Native HTTP ${response.status}: ${text}`);
-        error.status = response.status;
-        const retryAfter = response.headers.get("retry-after");
-        error.retryAfter = retryAfter ? Number(retryAfter) : null;
-        throw error;
-    }
-
-    const data = await response.json();
-    const candidate = data?.candidates?.[0];
-    const content = candidate?.content;
-
-    if (!content) {
-        throw new Error("Gemini returned no candidate content.");
-    }
+    const parts =
+        candidate?.content?.parts ||
+        [];
 
     let text = "";
-    const functionCalls = [];
 
-    for (const part of content.parts || []) {
-        if (typeof part?.text === "string") {
-            text += part.text;
+    const functionCalls =
+        [];
+
+    for (
+        const part of parts
+    ) {
+
+        if (
+            part?.text
+        ) {
+
+            text +=
+                part.text;
         }
-        if (part?.functionCall) {
-            functionCalls.push({
-                id: part.functionCall.id || `gemini_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                name: part.functionCall.name,
-                args: part.functionCall.args || {},
-                rawPart: part
-            });
+
+        if (
+            part?.functionCall
+        ) {
+
+            functionCalls.push(
+                part.functionCall
+            );
         }
     }
 
     return {
-        data,
-        candidate,
-        content,
-        text: text.trim(),
-        functionCalls
+
+        role:
+            "assistant",
+
+        text:
+            text.trim(),
+
+        functionCalls,
+
+        rawParts:
+            parts,
+
+        groundingMetadata:
+            candidate?.groundingMetadata ||
+            null
     };
 }
 
-async function callGeminiWithRetry(messages) {
-    const maxAttempts = Math.max(1, Number(AI_CONFIG.maxRetries ?? 2) + 1);
-    let lastError = null;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            return await callGeminiNative(messages);
-        } catch (error) {
-            lastError = error;
-            const retryable =
-                error?.status === 429 ||
-                error?.status === 500 ||
-                error?.status === 502 ||
-                error?.status === 503 ||
-                error?.status === 504;
+/* ============================================================
+   MAIN AGENT LOOP
+============================================================ */
 
-            if (!retryable || attempt >= maxAttempts) {
-                throw error;
-            }
-
-            let waitMs = Math.min(10000, 700 * 2 ** (attempt - 1));
-            if (Number.isFinite(error.retryAfter) && error.retryAfter > 0) {
-                waitMs = Math.max(waitMs, error.retryAfter * 1000);
-            }
-
-            state.agent.retries++;
-            EventBus.emit("GEMINI_RETRY", { attempt, waitMs, status: error.status });
-            await new Promise(resolve => setTimeout(resolve, waitMs));
-        }
-    }
-
-    throw lastError || new Error("Unknown Gemini error.");
-}
-
-/* =========================================================
-   WEB SEARCH WATCHDOG
-========================================================= */
-
-function shouldSearchWeb(
-    message
+async function runAgent(
+    userText
 ) {
 
-    const n =
-        normalizeArabic(
-            message
-        );
+    state.agent.iteration =
+        0;
 
+    state.agent.toolCalls =
+        0;
 
-    const freshness = [
+    state.agent.retries =
+        0;
 
-        "اليوم",
+    state.agent.lastTool =
+        null;
 
-        "دلوقتي",
+    state.agent.lastToolResult =
+        null;
 
-        "حاليا",
+    state.agent.webSearchUsed =
+        false;
 
-        "احدث",
+    state.agent.cycleStartedAt =
+        Date.now();
 
-        "اخر",
+    state.self.mode =
+        "REASONING";
 
-        "هذا الاسبوع",
+    state.self.currentThought =
+        "تحليل الطلب والسياق واختيار الإجراء المناسب...";
 
-        "النهارده",
+    state.self.currentAction =
+        "Analyzing";
 
-        "اسعار",
+    state.self.lastObservation =
+        "User input received";
 
-        "سعر",
+    saveState();
 
-        "الطقس",
+    renderAll();
 
-        "اخبار",
+    const turns = [];
 
-        "اخبار اليوم",
-
-        "من هو",
-
-        "ما الجديد",
-
-        "ابحث",
-
-        "دور لي",
-
-        "دورلي",
-
-        "ابحث لي",
-
-        "مصدر",
-
-        "مراجع"
-
-    ];
-
-
-    return freshness.some(
-        word =>
-            n.includes(
-                word
-            )
-    );
-
-}
-
-
-/* =========================================================
-   AGENT LOOP
-========================================================= */
-
-const Agent = {
-    async run(userMessage) {
-        state.agent.iteration = 1;
-        state.agent.toolCalls = 0;
-        state.agent.retries = 0;
-        state.agent.lastTool = null;
-        state.agent.lastToolResult = null;
-        state.agent.webSearchUsed = false;
-        state.agent.cycleStartedAt = Date.now();
-        state.self.confidence = 0.5;
-        state.self.uncertainty = 0.5;
-        state.self.cognitiveState = "reasoning";
-        EventBus.emit("AGENT_START", { message: userMessage });
-        renderAll();
-
-        const payload = {
-            userText: userMessage,
-            worldState: {
-                currentTime: new Date().toISOString(),
-                batteryLevel: 84,
-                isCharging: false,
-                networkStatus: navigator.onLine ? "WIFI_HIGH_SPEED" : "OFFLINE",
-                screenState: "SCREEN_ON",
-                activeApp: "J.A.R.V.I.S Web",
-                installedApps: [],
-                recentNotifications: [],
-                savedMemories: MemoryEngine.all().slice(-30),
-                activeGoal: state.currentGoal,
-                bluetoothConnected: false,
-                doNotDisturb: false,
-                volumeLevel: 70,
-                locationContext: "web"
-            },
-            selfModel: {
-                mode: "THINKING",
-                currentTask: userMessage,
-                confidence: Math.round(state.self.confidence * 100),
-                attention: Math.round(state.self.attention * 100),
-                uncertainty: Math.round(state.self.uncertainty * 100),
-                capabilities: {
-                    voice: true,
-                    memory: true,
-                    planning: true,
-                    androidControl: false,
-                    notifications: false,
-                    securityAudit: true,
-                    selfEvolution: true
-                },
-                unavailablePermissions: ["Android bridge not connected"],
-                cognitiveVersion: "JARVIS-Cognitive-Merge-1.0",
-                uptimeSeconds: Math.floor(performance.now()/1000),
-                totalEvolutionCycles: state.learning.episodes.length
-            },
-            personality: state.personality,
-            behaviorPolicy: {
-                rules: state.personality?.rules || [],
-                routines: [],
-                decisionPriorities: ["safety", "correctness", "user intent"],
-                errorHandlingStrategy: "explain and recover",
-                voiceSpeed: state.personality?.voiceRate || 0.95,
-                voicePitch: 1
-            },
-            conversationHistory: Conversation.recent(12).map(m => ({
-                sender: m.role,
-                text: m.text
-            })),
-            missionState: state.currentGoal
-        };
-
-        const response = await fetch("/api/jarvis/cognition", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const detail = await response.text();
-            throw new Error(`Cognitive Server HTTP ${response.status}: ${detail}`);
-        }
-
-        const data = await response.json();
-
-        // Merge the structured cognitive result into our existing local state.
-        if (data.selfModel) {
-            state.self.confidence = Math.max(0, Math.min(1, Number(data.selfModel.confidence ?? 50) / 100));
-            state.self.uncertainty = Math.max(0, Math.min(1, Number(data.selfModel.uncertainty ?? 50) / 100));
-            state.self.attention = Math.max(0, Math.min(1, Number(data.selfModel.attention ?? 85) / 100));
-            state.self.cognitiveState = data.selfModel.mode || "reflecting";
-            state.currentTask = data.selfModel.currentTask || state.currentTask;
-        }
-
-        if (data.personalityUpdates) {
-            state.personality = deepMerge(state.personality, data.personalityUpdates);
-        }
-
-        if (data.behaviorUpdates?.addedRule) {
-            state.personality.rules = Array.isArray(state.personality.rules)
-                ? [data.behaviorUpdates.addedRule, ...state.personality.rules].slice(0, 50)
-                : [data.behaviorUpdates.addedRule];
-        }
-
-        if (data.missionUpdate) {
-            state.currentGoal = data.missionUpdate;
-            state.currentPlan = data.missionUpdate.steps || null;
-        }
-
-        if (Array.isArray(data.androidActions) && data.androidActions.length) {
-            for (const action of data.androidActions) {
-                if (action.type === "SAVE_MEMORY" && action.params?.text) {
-                    MemoryEngine.save(String(action.params.text));
-                }
-            }
-            state.agent.lastTool = data.androidActions.map(a => a.type).join(", ");
-        }
-
-        if (data.selfEvolutionLog) {
-            EventBus.emit("SELF_EVOLUTION", data.selfEvolutionLog);
-        }
-
-        if (data.proactiveSuggestion) {
-            EventBus.emit("PROACTIVE_SUGGESTION", { text: data.proactiveSuggestion });
-        }
-
-        state.self.cognitiveState = "reflecting";
-        state.self.confidence = Math.max(state.self.confidence, 0.8);
-        state.self.uncertainty = Math.min(state.self.uncertainty, 0.2);
-
-        const finalText = String(data.spokenResponse || "تمت المعالجة، لكن لم يصل نص الرد النهائي.").trim();
-
-        LearningEngine.record({
-            userMessage,
-            goal: state.currentGoal,
-            plan: state.currentPlan,
-            toolCalls: Array.isArray(data.androidActions) ? data.androidActions.length : 0,
-            retries: 0,
-            webSearchUsed: false,
-            response: finalText,
-            cognitive: data
-        });
-
-        EventBus.emit("AGENT_REFLECTION", {
-            iteration: 1,
-            toolCalls: Array.isArray(data.androidActions) ? data.androidActions.length : 0,
-            webSearchUsed: false
-        });
-
-        state.self.cognitiveState = "idle";
-        saveState();
-        renderAll();
-        return finalText;
-    }
-};
-
-/* =========================================================
-   LEARNING ENGINE
-========================================================= */
-
-const LearningEngine = {
-
-    record(
-        episode
+    for (
+        const item of
+        Conversation.recent(10)
     ) {
 
-        state.learning
-            .episodes
-            .push({
+        turns.push({
 
-                id:
-                    Date.now() +
-                    "_" +
-                    Math.random()
-                        .toString(36)
-                        .slice(2),
+            role:
+                item.role ===
+                "assistant"
 
-                ...episode,
+                    ? "assistant"
 
-                createdAt:
-                    Date.now()
+                    : "user",
 
+            content:
+                item.text
+        });
+    }
+
+
+    for (
+        let iteration = 1;
+
+        iteration <=
+        Number(
+            CONFIG.maxAgentIterations ??
+            6
+        );
+
+        iteration++
+    ) {
+
+        state.agent.iteration =
+            iteration;
+
+        renderAll();
+
+        const result =
+            await callGemini(
+                turns
+            );
+
+        const parsed =
+            parseGeminiResponse(
+                result.data
+            );
+
+
+        /* ----------------------------------------------------
+           TOOL CALLS
+        ---------------------------------------------------- */
+
+        if (
+            parsed.functionCalls.length
+        ) {
+
+            turns.push({
+
+                role:
+                    "assistant",
+
+                content:
+                    parsed.text ||
+                    "[JARVIS tool action]"
             });
 
 
-        state.learning
-            .episodes =
-            state.learning
-                .episodes
-                .slice(
-                    -100
+            const responseLines =
+                [];
+
+
+            for (
+                const call of
+                parsed.functionCalls
+            ) {
+
+                const name =
+                    safeString(
+                        call.name
+                    );
+
+                const args =
+                    normalizeToolArgs(
+                        name,
+                        call.args ||
+                        {}
+                    );
+
+                state.self.currentAction =
+                    `Tool: ${name}`;
+
+                state.self.currentThought =
+                    `تنفيذ ${name} ثم مراجعة النتيجة...`;
+
+                renderAll();
+
+                const toolResult =
+                    await executeTool(
+                        name,
+                        args
+                    );
+
+                responseLines.push({
+
+                    name,
+
+                    response:
+                        toolResult
+                });
+
+                state.self.lastObservation =
+                    toolResult?.success
+                        ? "Tool succeeded"
+                        : "Tool returned failure";
+            }
+
+
+            turns.push({
+
+                role:
+                    "user",
+
+                content:
+                    "[FUNCTION_RESPONSE]\n" +
+                    safeJson(
+                        responseLines
+                    )
+            });
+
+
+            state.self.mode =
+                "OBSERVING";
+
+            renderAll();
+
+            continue;
+        }
+
+
+        /* ----------------------------------------------------
+           FINAL RESPONSE
+        ---------------------------------------------------- */
+
+        let finalText =
+            parsed.text;
+
+
+        /* ----------------------------------------------------
+           WEB FALLBACK WATCHDOG
+        ---------------------------------------------------- */
+
+        const needsCurrentWeb =
+            /(^|\s)(اليوم|دلوقتي|حاليا|حاليًا|اخر|آخر|احدث|أحدث|سعر|اسعار|أسعار|خبر|اخبار|أخبار|ابحث|دورلي|دور لي|مصدر|مراجع)(\s|$)/i
+                .test(
+                    userText
                 );
+
+
+        if (
+            CONFIG.fallbackWebSearch &&
+
+            needsCurrentWeb &&
+
+            !state.agent.webSearchUsed
+        ) {
+
+            const web =
+                await fallbackSearch(
+                    userText
+                );
+
+            if (
+                web.success
+            ) {
+
+                turns.push({
+
+                    role:
+                        "assistant",
+
+                    content:
+                        finalText ||
+                        "[No final answer]"
+                });
+
+                turns.push({
+
+                    role:
+                        "user",
+
+                    content:
+                        "A fallback web search was performed because the request likely required current information.\n" +
+                        safeJson(
+                            web.results
+                        ) +
+                        "\nUse these results to produce the final answer. Do not claim more than the results establish."
+                });
+
+
+                state.self.mode =
+                    "REVIEWING";
+
+                renderAll();
+
+
+                const reviewed =
+                    await callGemini(
+                        turns
+                    );
+
+                const reviewedParsed =
+                    parseGeminiResponse(
+                        reviewed.data
+                    );
+
+
+                if (
+                    reviewedParsed.text
+                ) {
+
+                    finalText =
+                        reviewedParsed.text;
+                }
+            }
+        }
+
+
+        if (
+            !finalText
+        ) {
+
+            finalText =
+                "انتهى التحليل، لكن النموذج لم يُرجع نصًا نهائيًا.";
+        }
+
+
+        /* ----------------------------------------------------
+           REFLECTION / LEARNING
+        ---------------------------------------------------- */
+
+        state.self.mode =
+            "REFLECTING";
+
+        state.self.currentThought =
+            "مراجعة النتيجة وتسجيل التعلم...";
+
+        state.self.lastObservation =
+            "Final response generated";
+
+
+        state.learning.unshift({
+
+            lesson:
+                `تمت معالجة الطلب: ${userText.slice(
+                    0,
+                    120
+                )}`,
+
+            toolCalls:
+                state.agent.toolCalls,
+
+            iterations:
+                state.agent.iteration,
+
+            createdAt:
+                Date.now()
+        });
+
+
+        state.learning =
+            state.learning.slice(
+                0,
+                50
+            );
+
+
+        state.self.mode =
+            "OBSERVING";
+
+        state.self.currentAction =
+            "Waiting";
 
 
         saveState();
 
 
-        EventBus.emit(
-            "LEARNING_EPISODE_RECORDED",
+        emit(
+            "AGENT_COMPLETED",
             {
 
-                goal:
-                    episode.goal?.title ||
-                    null,
+                iterations:
+                    state.agent.iteration,
 
                 toolCalls:
-                    episode.toolCalls,
+                    state.agent.toolCalls,
 
                 retries:
-                    episode.retries
-
+                    state.agent.retries
             }
         );
 
+
+        return finalText;
     }
 
-};
+
+    state.self.mode =
+        "OBSERVING";
+
+    return (
+        "وصلت إلى الحد الآمن لدورات الوكيل قبل إكمال المهمة."
+    );
+}
 
 
-/* =========================================================
-   NATURAL RESPONSE / VOICE
-========================================================= */
+/* ============================================================
+   TEXT TO SPEECH
+============================================================ */
 
 function speak(
     text
 ) {
 
     if (
-        !window.speechSynthesis
+        !(
+            "speechSynthesis"
+            in window
+        )
     ) {
 
         return;
-
     }
-
 
     try {
 
-        window.speechSynthesis
-            .cancel();
-
+        window.speechSynthesis.cancel();
 
         const utterance =
             new SpeechSynthesisUtterance(
                 text
             );
 
-
         utterance.lang =
             "ar-EG";
 
-
         utterance.rate =
-            clamp(
-                state.personality
-                    .voiceRate,
-
+            Math.max(
                 0.5,
 
-                2
+                Math.min(
+                    2,
+
+                    Number(
+                        state.personality
+                            .voiceRate
+                    ) ||
+                    0.95
+                )
             );
-
-
-        /*
-        نبرة طبيعية بدون محاولة تقليد
-        صوت شخصية حقيقية بعينها.
-        */
 
         utterance.pitch =
             1;
 
-
         utterance.volume =
             1;
 
-
-        window.speechSynthesis
-            .speak(
-                utterance
-            );
-
-    } catch (
-        error
-    ) {
-
-        console.warn(
-            "[TTS]",
-            error
+        window.speechSynthesis.speak(
+            utterance
         );
 
-    }
+    } catch (error) {
 
+        console.warn(
+            "[JARVIS TTS]",
+            error
+        );
+    }
 }
 
 
-/* =========================================================
-   MESSAGE UI
-========================================================= */
+/* ============================================================
+   UI
+============================================================ */
 
 function addMessage(
     role,
@@ -3683,21 +3877,18 @@ function addMessage(
             "messages"
         );
 
-
-    if (!box)
+    if (!box) {
         return;
-
+    }
 
     const wrapper =
         document.createElement(
             "div"
         );
 
-
     wrapper.className =
-        `message ${
-            role ===
-            "user"
+        `msg ${
+            role === "user"
                 ? "user"
                 : "jarvis"
         }`;
@@ -3708,14 +3899,11 @@ function addMessage(
             "div"
         );
 
-
     meta.className =
         "meta";
 
-
     meta.textContent =
-        role ===
-        "user"
+        role === "user"
             ? "YOU"
             : "J.A.R.V.I.S";
 
@@ -3725,9 +3913,13 @@ function addMessage(
             "div"
         );
 
-
-    body.textContent =
-        text;
+    body.innerHTML =
+        escapeHtml(
+            text
+        ).replace(
+            /\n/g,
+            "<br>"
+        );
 
 
     wrapper.append(
@@ -3735,17 +3927,11 @@ function addMessage(
         body
     );
 
-
     box.appendChild(
         wrapper
     );
-
 }
 
-
-/* =========================================================
-   RENDER
-========================================================= */
 
 function renderMessages() {
 
@@ -3754,121 +3940,77 @@ function renderMessages() {
             "messages"
         );
 
-
-    if (!box)
+    if (!box) {
         return;
-
+    }
 
     box.innerHTML =
         "";
 
-
     for (
-        const message
-        of state.conversation
+        const message of
+        state.conversation
     ) {
 
         addMessage(
-            message.role ===
-                "assistant"
-                ? "jarvis"
-                : "user",
-
+            message.role,
             message.text
         );
-
     }
-
 
     box.scrollTop =
         box.scrollHeight;
-
 }
 
 
-function renderState() {
+function renderCognitiveState() {
 
     setText(
         "systemState",
-        state.system.online
+
+        state.world.online
             ? "ONLINE"
             : "OFFLINE"
     );
 
-
     setText(
         "processing",
-        state.self.cognitiveState
+        state.self.mode
     );
-
 
     setText(
         "confidence",
+
         `${Math.round(
             state.self.confidence *
             100
         )}%`
     );
 
+    setText(
+        "attention",
+
+        `${Math.round(
+            state.self.attention *
+            100
+        )}%`
+    );
 
     setText(
         "uncertainty",
+
         `${Math.round(
             state.self.uncertainty *
             100
         )}%`
     );
 
-
     setText(
         "goal",
+
         state.currentGoal?.title ||
         "لا يوجد"
     );
-
-}
-
-
-function renderAnalysis() {
-
-    const analysis =
-        state.lastAnalysis;
-
-
-    setText(
-        "intent",
-        analysis?.intent ||
-        "AI"
-    );
-
-
-    setText(
-        "analysisGoal",
-        analysis?.goal ||
-        state.currentGoal?.title ||
-        "—"
-    );
-
-
-    setText(
-        "memoryAction",
-        analysis?.memoryAction ||
-        "tool-driven"
-    );
-
-
-    setText(
-        "urgency",
-        `${Math.round(
-            (
-                analysis?.urgency ||
-                state.currentGoal
-                    ?.urgency ||
-                0
-            ) * 100
-        )}%`
-    );
-
 }
 
 
@@ -3879,58 +4021,35 @@ function renderMemory() {
             "memoryView"
         );
 
-
-    if (!box)
+    if (!box) {
         return;
+    }
 
-
-    const memories =
-        MemoryEngine
-            .all()
-            .slice(
-                -10
-            )
+    const values =
+        state.memories
+            .slice(-12)
             .reverse();
 
 
-    if (
-        !memories.length
-    ) {
-
-        box.textContent =
-            "لا توجد ذكريات.";
-
-        return;
-
-    }
-
-
     box.innerHTML =
-        memories
-            .map(
-                memory =>
-                    `
-                    <div class="row">
+        values.length
 
-                        <span
-                            class="value"
-                            style="
-                                max-width:100%;
-                                text-align:right
-                            "
-                        >
+            ? values
+                .map(
+                    item =>
+                        `
+                        <div class="row">
+                            <span class="value" style="width:100%;text-align:right">
+                                ${escapeHtml(
+                                    item.text
+                                )}
+                            </span>
+                        </div>
+                        `
+                )
+                .join("")
 
-                            ${escapeHtml(
-                                memory.text
-                            )}
-
-                        </span>
-
-                    </div>
-                    `
-            )
-            .join("");
-
+            : "فارغة";
 }
 
 
@@ -3941,14 +4060,12 @@ function renderPlan() {
             "planView"
         );
 
-
-    if (!box)
+    if (!box) {
         return;
-
+    }
 
     const plan =
         state.currentPlan;
-
 
     if (!plan) {
 
@@ -3956,92 +4073,63 @@ function renderPlan() {
             "لا توجد خطة.";
 
         return;
-
     }
 
 
-    box.innerHTML = `
+    let html =
 
+        `
         <div class="row">
-
-            <span class="label">
-                الهدف
-            </span>
-
-            <span class="value">
-                ${escapeHtml(
-                    plan.goal
-                )}
-            </span>
-
+            <span class="label">الهدف</span>
+            <span class="value">${escapeHtml(
+                plan.goal
+            )}</span>
         </div>
 
-
         <div class="row">
-
-            <span class="label">
-                الاستراتيجية
-            </span>
-
-            <span class="value">
-                ${escapeHtml(
-                    plan.selectedStrategy ||
-                    "AI selected"
-                )}
-            </span>
-
+            <span class="label">الاستراتيجية</span>
+            <span class="value">${escapeHtml(
+                plan.strategy ||
+                "AI"
+            )}</span>
         </div>
 
-
         <div class="row">
-
-            <span class="label">
-                الحالة
-            </span>
-
-            <span class="value">
-                ${escapeHtml(
-                    plan.status
-                )}
-            </span>
-
+            <span class="label">الحالة</span>
+            <span class="value">${escapeHtml(
+                plan.status
+            )}</span>
         </div>
+        `;
 
 
-        ${
-            Array.isArray(
-                plan.steps
-            )
+    for (
+        const step of
+        plan.steps || []
+    ) {
 
-                ? plan.steps
-                    .map(
-                        (
-                            step,
-                            index
-                        ) =>
-                            `
-                            <div class="row">
+        html +=
 
-                                <span class="label">
-                                    ${index + 1}
-                                </span>
+            `
+            <div class="row">
+                <span class="label">
+                    ${escapeHtml(
+                        step.status
+                    )}
+                </span>
 
-                                <span class="value">
-                                    ${escapeHtml(
-                                        step
-                                    )}
-                                </span>
+                <span class="value">
+                    ${escapeHtml(
+                        step.title
+                    )}
+                </span>
+            </div>
+            `;
+    }
 
-                            </div>
-                            `
-                    )
-                    .join("")
 
-                : ""
-        }
-
-    `;
-
+    box.innerHTML =
+        html;
 }
 
 
@@ -4052,17 +4140,13 @@ function renderEventLog() {
             "eventLog"
         );
 
-
-    if (!box)
+    if (!box) {
         return;
-
+    }
 
     box.textContent =
         state.events
-            .slice(
-                0,
-                40
-            )
+            .slice(0, 25)
             .map(
                 event =>
                     `${new Date(
@@ -4074,7 +4158,46 @@ function renderEventLog() {
             .join(
                 "\n"
             );
+}
 
+
+function renderExtras() {
+
+    const box =
+        document.getElementById(
+            "analysisExtras"
+        );
+
+    if (!box) {
+        return;
+    }
+
+    box.innerHTML =
+
+        `
+        <div class="row">
+            <span class="label">Tool Calls</span>
+            <span class="value">
+                ${state.agent.toolCalls}
+            </span>
+        </div>
+
+        <div class="row">
+            <span class="label">Iterations</span>
+            <span class="value">
+                ${state.agent.iteration}
+            </span>
+        </div>
+
+        <div class="row">
+            <span class="label">Mode</span>
+            <span class="value">
+                ${escapeHtml(
+                    state.self.mode
+                )}
+            </span>
+        </div>
+        `;
 }
 
 
@@ -4082,9 +4205,7 @@ function renderAll() {
 
     renderMessages();
 
-    renderState();
-
-    renderAnalysis();
+    renderCognitiveState();
 
     renderMemory();
 
@@ -4092,33 +4213,13 @@ function renderAll() {
 
     renderEventLog();
 
+    renderExtras();
 }
 
 
-function setText(
-    id,
-    value
-) {
-
-    const node =
-        document.getElementById(
-            id
-        );
-
-
-    if (node) {
-
-        node.textContent =
-            value;
-
-    }
-
-}
-
-
-/* =========================================================
-   USER MESSAGE PIPELINE
-========================================================= */
+/* ============================================================
+   MESSAGE HANDLER
+============================================================ */
 
 let sending =
     false;
@@ -4126,171 +4227,183 @@ let sending =
 
 async function handleUserMessage() {
 
-    if (
-        sending
-    ) {
-
+    if (sending) {
         return;
-
     }
-
 
     const input =
         document.getElementById(
             "userInput"
         );
 
-
     const button =
         document.getElementById(
             "sendButton"
         );
 
-
-    if (!input)
+    if (!input) {
         return;
-
+    }
 
     const text =
         input.value.trim();
 
-
-    if (!text)
+    if (!text) {
         return;
-
+    }
 
     sending =
         true;
 
-
     if (button) {
-
         button.disabled =
             true;
-
     }
 
-
-    /*
-    Add to conversation immediately.
-    */
 
     Conversation.addUser(
         text
     );
 
-
     input.value =
         "";
 
+    state.world.online =
+        navigator.onLine;
 
     renderAll();
 
 
     try {
 
-        const response =
-            await Agent.run(
+        const answer =
+            await runAgent(
                 text
             );
 
-
-        /*
-        Store ONLY once.
-        */
-
-        Conversation.addJarvis(
-            response
+        Conversation.addAssistant(
+            answer
         );
-
 
         renderAll();
 
-
         speak(
-            response
+            answer
         );
 
-
-    } catch (
-        error
-    ) {
+    } catch (error) {
 
         console.error(
-            "[JARVIS AGENT ERROR]",
+            "[JARVIS ERROR]",
             error
         );
 
-
-        state.self.cognitiveState =
-            "error";
-
+        state.self.mode =
+            "ERROR";
 
         state.self.confidence =
             0.05;
-
 
         state.self.uncertainty =
             0.95;
 
 
-        const errorMessage =
-            `حدث خطأ في النواة: ${
-                error.message
-            }`;
+        const message =
+            safeString(
+                error?.message ||
+                error
+            );
 
 
-        Conversation.addJarvis(
-            errorMessage
+        Conversation.addAssistant(
+            `حدث خطأ في النواة: ${message}`
         );
 
 
-        EventBus.emit(
+        emit(
             "AGENT_ERROR",
             {
-                message:
-                    error.message
+                message
             }
         );
-
-
-        renderAll();
-
 
     } finally {
 
         sending =
             false;
 
-
-        state.self.cognitiveState =
-            "idle";
-
+        state.self.mode =
+            "OBSERVING";
 
         if (button) {
-
             button.disabled =
                 false;
-
         }
-
 
         renderAll();
 
-
         input.focus();
 
-
         saveState();
-
     }
-
 }
 
 
-/* =========================================================
-   STARTUP
-========================================================= */
+/* ============================================================
+   CONTROLS
+============================================================ */
+
+function clearConversation() {
+
+    state.conversation =
+        [];
+
+    state.agent.iteration =
+        0;
+
+    state.agent.toolCalls =
+        0;
+
+    saveState();
+
+    renderAll();
+
+    emit(
+        "CONVERSATION_CLEARED"
+    );
+}
+
+
+function toggleVoice() {
+
+    const button =
+        document.getElementById(
+            "voiceButton"
+        );
+
+    if (!button) {
+        return;
+    }
+
+    if (
+        window.speechSynthesis
+            ?.speaking
+    ) {
+
+        window.speechSynthesis.cancel();
+
+        return;
+    }
+
+    speak(
+        `نظام الصوت جاهز يا ${state.personality.addressStyle}.`
+    );
+}
+
+
+/* ============================================================
+   BOOT
+============================================================ */
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -4301,10 +4414,19 @@ document.addEventListener(
                 "chatForm"
             );
 
-
         const input =
             document.getElementById(
                 "userInput"
+            );
+
+        const clearButton =
+            document.getElementById(
+                "clearButton"
+            );
+
+        const voiceButton =
+            document.getElementById(
+                "voiceButton"
             );
 
 
@@ -4314,11 +4436,10 @@ document.addEventListener(
         ) {
 
             console.error(
-                "JARVIS: Required UI elements are missing."
+                "JARVIS: chatForm/userInput missing."
             );
 
             return;
-
         }
 
 
@@ -4328,47 +4449,90 @@ document.addEventListener(
 
                 event.preventDefault();
 
-                void
-                    handleUserMessage();
-
+                void handleUserMessage();
             }
         );
 
 
-        renderAll();
+        clearButton?.addEventListener(
+            "click",
+            clearConversation
+        );
+
+
+        voiceButton?.addEventListener(
+            "click",
+            toggleVoice
+        );
 
 
         if (
             !state.conversation.length
         ) {
 
-            Conversation.addJarvis(
+            state.conversation.push({
 
-                "صباح الخير يا سيدي. النواة الوكيلة جاهزة. أنا الآن أستطيع الفهم، استخدام الأدوات، الملاحظة، إعادة التخطيط، والتعلم من نتائج المهام."
+                role:
+                    "assistant",
 
-            );
+                text:
+                    "صباح الخير يا سيدي. النواة المعرفية جاهزة.",
 
+                timestamp:
+                    Date.now()
+            });
+
+            saveState();
         }
+
+
+        state.world.online =
+            navigator.onLine;
+
+
+        window.addEventListener(
+            "online",
+            () => {
+
+                state.world.online =
+                    true;
+
+                renderAll();
+            }
+        );
+
+
+        window.addEventListener(
+            "offline",
+            () => {
+
+                state.world.online =
+                    false;
+
+                renderAll();
+            }
+        );
 
 
         renderAll();
 
-
         input.focus();
 
 
-        EventBus.emit(
+        emit(
             "SYSTEM_BOOT",
             {
 
-                version:
-                    state.system.version,
-
                 model:
-                    state.system.model
+                    CONFIG.model ||
+                    "gemini-3.7-flash",
 
+                provider:
+                    "Gemini Native",
+
+                environment:
+                    "GitHub Pages / Browser"
             }
         );
-
     }
 );
