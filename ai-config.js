@@ -5,7 +5,7 @@ window.JARVIS_AI_CONFIG = {
 
     provider: "gemini",
 
-    apiKey: "ضع_مفتاح_Gemini_هنا",
+    apiKey: "AQ.Ab8RN6KHm0qKdE0JNH3maCrrUTz8Jq0HzNs2ytPYOh7woMmhng",
 
     model: "gemini-3.7-flash",
 
