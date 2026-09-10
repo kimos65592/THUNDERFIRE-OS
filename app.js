@@ -3216,31 +3216,23 @@ async function callGemini(
 
         try {
 
-            const response =
-                await fetch(
+            const response = await fetch(
+    endpoint +
+    `?key=${encodeURIComponent(
+        CONFIG.apiKey
+    )}`,
+    {
+        method: "POST",
 
-                    endpoint +
-                    `?key=${encodeURIComponent(
-                        CONFIG.apiKey
-                    )}`,
+        headers: {
+            "Content-Type":
+                "application/json"
+        },
 
-                    {
-
-                        method:
-                            "POST",
-
-                        headers: {
-
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body:
-                            JSON.stringify(
-                                body
-                            )
-                    }
-                );
+        body:
+            JSON.stringify(body)
+    }
+);
 
             const raw =
                 await response.text();
