@@ -3528,91 +3528,65 @@ async function runAgent(
            TOOL CALLS
         ---------------------------------------------------- */
 
-        if (
-            parsed.functionCalls.length
-        ) {
+        if (parsed.functionCalls.length) {
 
-            turns.push({
+    turns.push({
+        role: "assistant",
+        parts: parsed.rawParts
+    });
 
-                role:
-                    "assistant",
+    const responseParts = [];
 
-                content:
-                    parsed.text ||
-                    "[JARVIS tool action]"
-            });
+    for (const call of parsed.functionCalls) {
 
+        const name =
+            safeString(call.name);
 
-            const responseLines =
-                [];
+        const args =
+            normalizeToolArgs(
+                name,
+                call.args || {}
+            );
 
+        state.self.currentAction =
+            `Tool: ${name}`;
 
-            for (
-                const call of
-                parsed.functionCalls
-            ) {
+        state.self.currentThought =
+            `تنفيذ ${name} ثم مراجعة النتيجة...`;
 
-                const name =
-                    safeString(
-                        call.name
-                    );
+        renderAll();
 
-                const args =
-                    normalizeToolArgs(
-                        name,
-                        call.args ||
-                        {}
-                    );
+        const toolResult =
+            await executeTool(
+                name,
+                args
+            );
 
-                state.self.currentAction =
-                    `Tool: ${name}`;
-
-                state.self.currentThought =
-                    `تنفيذ ${name} ثم مراجعة النتيجة...`;
-
-                renderAll();
-
-                const toolResult =
-                    await executeTool(
-                        name,
-                        args
-                    );
-
-                responseLines.push({
-
-                    name,
-
-                    response:
-                        toolResult
-                });
-
-                state.self.lastObservation =
-                    toolResult?.success
-                        ? "Tool succeeded"
-                        : "Tool returned failure";
+        responseParts.push({
+            functionResponse: {
+                name,
+                response: toolResult
             }
+        });
 
+        state.self.lastObservation =
+            toolResult?.success
+                ? "Tool succeeded"
+                : "Tool returned failure";
+    }
 
-            turns.push({
+    turns.push({
+        role: "user",
+        parts: responseParts
+    });
 
-                role:
-                    "user",
+    state.self.mode =
+        "OBSERVING";
 
-                content:
-                    "[FUNCTION_RESPONSE]\n" +
-                    safeJson(
-                        responseLines
-                    )
-            });
+    renderAll();
 
-
-            state.self.mode =
-                "OBSERVING";
-
-            renderAll();
-
-            continue;
-        }
+    continue;
+}
 
 
         /* ----------------------------------------------------
