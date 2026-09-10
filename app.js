@@ -3052,35 +3052,36 @@ function makeEndpoint() {
    GEMINI CONTENT FORMAT
 ============================================================ */
 
-function buildGeminiContents(
-    turns
-) {
+function buildGeminiContents(turns) {
+    const out = [];
 
-    return turns.map(
-        turn => ({
+    for (const turn of turns) {
+        const role =
+            turn.role === "assistant"
+                ? "model"
+                : "user";
 
-            role:
-                turn.role ===
-                "assistant"
-
-                    ? "model"
-
-                    : "user",
-
-            parts: [
-
-                {
-                    text:
-                        safeString(
+        if (Array.isArray(turn.parts)) {
+            out.push({
+                role,
+                parts: turn.parts
+            });
+        } else {
+            out.push({
+                role,
+                parts: [
+                    {
+                        text: safeString(
                             turn.content
                         )
-                }
+                    }
+                ]
+            });
+        }
+    }
 
-            ]
-        })
-    );
+    return out;
 }
-
 
 /* ============================================================
    RETRY HELPERS
