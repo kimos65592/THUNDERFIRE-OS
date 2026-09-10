@@ -3217,16 +3217,16 @@ async function callGemini(
         try {
 
             const response = await fetch(
-    endpoint +
-    `?key=${encodeURIComponent(
-        CONFIG.apiKey
-    )}`,
+    endpoint,
     {
         method: "POST",
 
         headers: {
             "Content-Type":
-                "application/json"
+                "application/json",
+
+            "x-goog-api-key":
+                CONFIG.apiKey
         },
 
         body:
