@@ -1,91 +1,67 @@
-name: Build J.A.R.V.I.S Android APK
+name: Build Neo JARVIS APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 2. Set up Java JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: 3. Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          gradle-version: '9.6.0'
 
-      - name: 4. Install Project Dependencies
+      - name: Download Vosk wake-word model
         run: |
-          npm install
+          mkdir -p app/src/main/assets/model-en-us
+          curl -L --fail --retry 3 \
+            https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+            -o /tmp/vosk-model.zip
+          unzip -q /tmp/vosk-model.zip -d /tmp/vosk-model
+          cp -a /tmp/vosk-model/vosk-model-small-en-us-0.15/. app/src/main/assets/model-en-us/
+          test -f app/src/main/assets/model-en-us/am/final.mdl
 
-      - name: 5. Prepare Web Assets Directory
-        run: |
-          mkdir -p www
-          cp index.html www/index.html
+      - name: Build Debug APK
+        run: gradle --no-daemon :app:assembleDebug
 
-      - name: 6. Add & Sync Android Platform
-        run: |
-          npx cap add android
-          npx cap sync android
-
-      - name: 7. Inject Custom AndroidManifest with Permissions
-        run: |
-          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.jarvis.cognitiveos">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.FLASHLIGHT" />
-              <uses-permission android:name="android.permission.RECORD_AUDIO" />
-              <uses-permission android:name="android.permission.VIBRATION" />
-              <uses-permission android:name="android.permission.WAKE_LOCK" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-              <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
-              
-              <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="JARVIS Mark V"
-                  android:supportsRtl="true"
-                  android:usesCleartextTraffic="true"
-                  android:theme="@style/AppTheme">
-                  <activity
-                      android:name=".MainActivity"
-                      android:label="JARVIS Mark V"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale"
-                      android:launchMode="singleTask"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-      - name: 8. Build Android APK via Gradle
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-
-      - name: 9. Upload APK Artifact to GitHub Actions
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-MarkV-APK-Debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
+          name: Neo-JARVIS-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload mapping/build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neo-JARVIS-build-info
+          path: |
+            app/build/outputs/logs/
+            app/build/outputs/apk/debug/output-metadata.json
+          if-no-files-found: ignore
           
