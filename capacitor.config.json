@@ -1,0 +1,14 @@
+{
+  "appId": "com.jarvis.cognitiveos",
+  "appName": "JARVIS Mark V",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}
