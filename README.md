@@ -1,43 +1,18 @@
-# J.A.R.V.I.S — Cognitive OS (Merged Core)
+# Neo — J.A.R.V.I.S Mark V Android APK
 
-This build keeps the original J.A.R.V.I.S web UI and local agent state, while moving Gemini calls to the server-side cognitive layer taken from the working Google AI Studio project.
+This project wraps the supplied Mark V HTML OS inside an Android WebView and adds a native Android microphone layer.
 
-## Architecture
+## Native additions
+- Android foreground microphone service.
+- Local Vosk wake-word detection for `Neo`.
+- Arabic command capture using Android SpeechRecognizer after wake word detection.
+- Native Arabic TTS bridge.
+- Native vibration bridge.
+- Native flashlight bridge.
+- Existing HTML/Cognitive UI kept as the main interface.
 
-Browser UI -> `/api/jarvis/cognition` -> Gemini server runtime -> structured cognitive response -> local state/memory/learning
+## Important Android behavior
+The microphone foreground service must be started while the app is visible and the user has granted `RECORD_AUDIO`. Android 15 restricts starting microphone foreground services from the background and from `BOOT_COMPLETED` in normal cases.
 
-The browser does NOT contain the Gemini API key.
-
-## Secret
-
-Set `GEMINI_API_KEY` in the server environment / AI Studio Secrets.
-
-Do not put the key in `index.html` or `app.js`.
-
-## Main endpoints
-
-- `POST /api/jarvis/cognition` — cognitive perception/reasoning response
-- `POST /api/jarvis/evolve` — self-evolution cycle
-- `POST /api/jarvis/simulate-threat` — defensive simulation lab
-- `GET /api/health` — server health
-
-## First tests
-
-1. أهلا
-2. احفظ أنني أحب البرمجة
-3. ماذا تتذكر عني؟
-4. خطط لي للمذاكرة
-5. لماذا اخترت الخطة دي؟
-6. خليك مختصر
-
-The Android actions returned by the current web build are still simulated until a real Android Bridge is connected. The system must never report a phone action as actually executed unless the bridge returns a successful result.
-
-
-## Production deployment
-
-The server reads the listening port from `PORT` and the Gemini key from the server-side `GEMINI_API_KEY` environment variable. Do not put the real Gemini key in `app.js`, `index.html`, or GitHub.
-
-Recommended first deployment target: Render Web Service.
-Build command: `npm install && npm run build`
-Start command: `npm start`
-Health check: `/api/health`
+## GitHub build
+The workflow downloads the Vosk small English model during the build, then produces a debug APK as a GitHub Actions artifact.
