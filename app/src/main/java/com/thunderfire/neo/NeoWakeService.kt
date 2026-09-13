@@ -208,9 +208,8 @@ class NeoWakeService : Service() {
                             read
                         )
                     ) {
-                        val result =
+                        val result: String =
                             rec.result()
-
                         val text =
                             extractText(
                                 result
