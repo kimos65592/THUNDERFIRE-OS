@@ -208,12 +208,10 @@ class NeoWakeService : Service() {
                             read
                         )
                     ) {
-                        rec.getResult()
-
                         val text =
                             extractText(
-                                result
-                            )
+                            rec.getResult()
+                   )
 
                         if (
                             text.equals(
