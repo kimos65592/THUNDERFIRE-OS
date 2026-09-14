@@ -208,8 +208,7 @@ class NeoWakeService : Service() {
                             read
                         )
                     ) {
-                        val result: String =
-                            rec.result()
+                        val result: String = (rec as org.vosk.Recognizer).result
                         val text =
                             extractText(
                                 result
